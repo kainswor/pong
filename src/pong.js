@@ -1917,6 +1917,11 @@ class Pong {
     
     // Keyboard handler for Enter key and arrow keys
     document.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.keyCode === 32) {
+        e.preventDefault();
+        if (this.display && typeof this.display.degauss === 'function') this.display.degauss();
+        return;
+      }
       if (e.key === 'Enter' || e.keyCode === 13) {
         e.preventDefault();
         // Trigger button action based on current state
