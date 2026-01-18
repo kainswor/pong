@@ -5,14 +5,16 @@
  * Pixels have two states: ON (retro green) or OFF (black).
  */
 export class PixelDisplay {
-  constructor(canvas, emulatedWidth = 300, emulatedHeight = 200, displayWidth = 800, displayHeight = 600) {
+  constructor(canvas, emulatedWidth = 300, emulatedHeight = 200, displayWidth = 800, displayHeight = 600, refreshHz = 60) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.emulatedWidth = emulatedWidth;
     this.emulatedHeight = emulatedHeight;
     this.displayWidth = displayWidth;
     this.displayHeight = displayHeight;
-    
+    this.refreshHz = refreshHz;
+    this.targetIntervalMs = 1000 / refreshHz;
+
     // Set canvas size
     this.canvas.width = displayWidth;
     this.canvas.height = displayHeight;
@@ -46,8 +48,8 @@ export class PixelDisplay {
       }
     }
     
-    this.animationFrameId = null;
-    this.isRunning = false;
+    // Deterministic time for tests: when set, getTime() returns this instead of performance.now()
+    this._now = undefined;
 
     // Degauss (CRT-style) effect: no stacking, 30s cooldown
     this.lastDegaussEndTime = 0;   // ms; 0 = never
@@ -75,7 +77,7 @@ export class PixelDisplay {
   setPixel(x, y, state) {
     if (x >= 0 && x < this.emulatedWidth && y >= 0 && y < this.emulatedHeight) {
       const pixel = this.pixels[y][x];
-      const now = performance.now();
+      const now = this.getTime();
       if (pixel.state !== state) {
         pixel.state = state;
         if (state) {
@@ -99,14 +101,69 @@ export class PixelDisplay {
     }
     return false;
   }
-  
+
+  /**
+   * Set deterministic time for tests. When set, getTime() returns this instead of performance.now().
+   * @param {number} nowMs - Time in milliseconds, or undefined to use real time again
+   */
+  setTime(nowMs) {
+    this._now = nowMs;
+  }
+
+  /**
+   * Get current time in ms. Returns _now when set (tests), else performance.now().
+   */
+  getTime() {
+    return this._now !== undefined ? this._now : performance.now();
+  }
+
+  /**
+   * Return ASCII art for region [x..x+w)[y..y+h): '#' for state true, '.' for false.
+   * Clamps to emulatedWidth/emulatedHeight. Rows newline-separated; origin top-left.
+   */
+  toASCII(x, y, w, h) {
+    const x0 = Math.max(0, Math.min(x, this.emulatedWidth));
+    const y0 = Math.max(0, Math.min(y, this.emulatedHeight));
+    const x1 = Math.min(this.emulatedWidth, x0 + Math.max(0, w));
+    const y1 = Math.min(this.emulatedHeight, y0 + Math.max(0, h));
+    const rows = [];
+    for (let py = y0; py < y1; py++) {
+      let row = '';
+      for (let px = x0; px < x1; px++) {
+        row += this.pixels[py][px].state ? '#' : '.';
+      }
+      rows.push(row);
+    }
+    return rows.join('\n');
+  }
+
+  /**
+   * Return 2D array of pixel state (boolean) for region [x..x+w)[y..y+h). Clamps to bounds.
+   * @returns {boolean[][]} [py][px] = pixels[y0+py][x0+px].state
+   */
+  getPixelRegion(x, y, w, h) {
+    const x0 = Math.max(0, Math.min(x, this.emulatedWidth));
+    const y0 = Math.max(0, Math.min(y, this.emulatedHeight));
+    const x1 = Math.min(this.emulatedWidth, x0 + Math.max(0, w));
+    const y1 = Math.min(this.emulatedHeight, y0 + Math.max(0, h));
+    const out = [];
+    for (let py = y0; py < y1; py++) {
+      const row = [];
+      for (let px = x0; px < x1; px++) {
+        row.push(this.pixels[py][px].state);
+      }
+      out.push(row);
+    }
+    return out;
+  }
+
   /**
    * Trigger CRT-style degauss: wobble and color distortion.
    * No stacking (ignored while running). 30s cooldown scales effect:
    * at 1s after last end: no visible; at 30s: full. Exponential curve.
    */
   degauss() {
-    const now = performance.now();
+    const now = this.getTime();
 
     // No stacking: ignore if animation still running
     if (this.degaussStartTime !== 0 && (now - this.degaussStartTime) < this.degaussDuration) {
@@ -135,10 +192,123 @@ export class PixelDisplay {
   }
 
   /**
+   * Draw a 2D pattern. pattern[py][px]: 1=on, 0=skip. Scale: each 1 becomes scale×scale pixels.
+   */
+  drawPattern(pattern, x, y, scale = 1) {
+    const s = Math.max(1, Math.floor(scale));
+    const rows = pattern.length;
+    for (let row = 0; row < rows; row++) {
+      const r = pattern[row];
+      if (!r || !Array.isArray(r)) continue;
+      const cols = r.length;
+      for (let col = 0; col < cols; col++) {
+        if (r[col] === 1 || r[col] === true) {
+          for (let sy = 0; sy < s; sy++) {
+            for (let sx = 0; sx < s; sx++) {
+              const px = Math.floor(x + col * s + sx);
+              const py = Math.floor(y + row * s + sy);
+              this.setPixel(px, py, true);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Draw 1px outline of rectangle (x,y,w,h): top, bottom, left, right edges.
+   * options.preserve(px, py) => true to skip that pixel (e.g. court).
+   */
+  drawRectOutline(x, y, w, h, options = {}) {
+    const x0 = Math.floor(x), y0 = Math.floor(y);
+    const x1 = Math.floor(x + w) - 1, y1 = Math.floor(y + h) - 1;
+    const preserve = options.preserve;
+    const skip = (px, py) => preserve && typeof preserve === 'function' && preserve(px, py);
+    for (let px = x0; px <= x1; px++) { if (!skip(px, y0)) this.setPixel(px, y0, true); }
+    for (let px = x0; px <= x1; px++) { if (!skip(px, y1)) this.setPixel(px, y1, true); }
+    for (let py = y0; py <= y1; py++) { if (!skip(x0, py)) this.setPixel(x0, py, true); }
+    for (let py = y0; py <= y1; py++) { if (!skip(x1, py)) this.setPixel(x1, py, true); }
+  }
+
+  /**
+   * Draw filled rectangle [x..x+w)[y..y+h). Uses setPixel for each pixel.
+   */
+  drawRectFilled(x, y, w, h) {
+    const x0 = Math.max(0, Math.floor(x));
+    const y0 = Math.max(0, Math.floor(y));
+    const x1 = Math.min(this.emulatedWidth, x0 + Math.max(0, Math.floor(w)));
+    const y1 = Math.min(this.emulatedHeight, y0 + Math.max(0, Math.floor(h)));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        this.setPixel(px, py, true);
+      }
+    }
+  }
+
+  /**
+   * Horizontal line at y from x0 to x1 (inclusive). x0,x1 can be in any order.
+   */
+  drawLineH(y, x0, x1) {
+    const py = Math.floor(y);
+    if (py < 0 || py >= this.emulatedHeight) return;
+    const a = Math.min(Math.floor(x0), Math.floor(x1));
+    const b = Math.max(Math.floor(x0), Math.floor(x1));
+    for (let px = Math.max(0, a); px <= Math.min(this.emulatedWidth - 1, b); px++) {
+      this.setPixel(px, py, true);
+    }
+  }
+
+  /**
+   * Vertical line at x from y0 to y1 (inclusive). y0,y1 can be in any order.
+   */
+  drawLineV(x, y0, y1) {
+    const px = Math.floor(x);
+    if (px < 0 || px >= this.emulatedWidth) return;
+    const a = Math.min(Math.floor(y0), Math.floor(y1));
+    const b = Math.max(Math.floor(y0), Math.floor(y1));
+    for (let py = Math.max(0, a); py <= Math.min(this.emulatedHeight - 1, b); py++) {
+      this.setPixel(px, py, true);
+    }
+  }
+
+  /**
+   * Dashed vertical line at x from y0 to y1: pixels every `stride` rows (y0, y0+stride, y0+2*stride, ...).
+   */
+  drawLineVDashed(x, y0, y1, stride = 2) {
+    const px = Math.floor(x);
+    if (px < 0 || px >= this.emulatedWidth) return;
+    const s = Math.max(1, Math.floor(stride));
+    const a = Math.min(Math.floor(y0), Math.floor(y1));
+    const b = Math.max(Math.floor(y0), Math.floor(y1));
+    for (let py = a; py <= b; py += s) {
+      if (py >= 0 && py < this.emulatedHeight) this.setPixel(px, py, true);
+    }
+  }
+
+  /**
+   * Clear rectangle [x..x+w)[y..y+h). options.preserve(px, py) => true to keep pixel.
+   */
+  clearRect(x, y, w, h, options = {}) {
+    const now = this.getTime();
+    const x0 = Math.max(0, Math.floor(x));
+    const y0 = Math.max(0, Math.floor(y));
+    const x1 = Math.min(this.emulatedWidth, x0 + Math.max(0, Math.floor(w)));
+    const y1 = Math.min(this.emulatedHeight, y0 + Math.max(0, Math.floor(h)));
+    const preserve = options.preserve;
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) {
+        if (preserve && typeof preserve === 'function' && preserve(px, py)) continue;
+        this.pixels[py][px].state = false;
+        this.pixels[py][px].offTimestamp = now;
+      }
+    }
+  }
+
+  /**
    * Clear all pixels (set all to OFF)
    */
   clear() {
-    const now = performance.now();
+    const now = this.getTime();
     for (let y = 0; y < this.emulatedHeight; y++) {
       for (let x = 0; x < this.emulatedWidth; x++) {
         this.pixels[y][x].state = false;
@@ -195,10 +365,18 @@ export class PixelDisplay {
   }
   
   /**
-   * Render a single frame
+   * Render a single frame.
+   * @param {number} [alpha] - Interpolation factor 0..1 (for future use).
+   * @param {Object} [opts] - { now, dtSinceLastRender }. now=wall-clock ms; dtSinceLastRender=ms since last render.
+   *   When omitted (e.g. internal loop), now=getTime() and dtSinceLastRender=0.
+   *   driftMs = dtSinceLastRender - targetIntervalMs; effectiveDt = min(dtSinceLastRender, 2*targetIntervalMs) for delta-based logic.
    */
-  render() {
-    const currentTime = performance.now();
+  render(alpha, opts) {
+    const now = (opts && opts.now != null) ? opts.now : this.getTime();
+    const dtSinceLastRender = (opts && opts.dtSinceLastRender != null) ? opts.dtSinceLastRender : 0;
+    this.driftMs = dtSinceLastRender - this.targetIntervalMs;
+    this.effectiveDt = Math.min(dtSinceLastRender, 2 * this.targetIntervalMs);
+    const currentTime = now;
 
     // Degauss: end check
     if (this.degaussStartTime !== 0 && (currentTime - this.degaussStartTime) >= this.degaussDuration) {
@@ -271,34 +449,6 @@ export class PixelDisplay {
     if (degaussActive) {
       this.ctx.fillStyle = `rgba(255, 0, 255, ${overlayAlpha})`;
       this.ctx.fillRect(0, 0, this.displayWidth, this.displayHeight);
-    }
-  }
-  
-  /**
-   * Start the render loop
-   */
-  start() {
-    if (this.isRunning) return;
-    
-    this.isRunning = true;
-    const renderLoop = () => {
-      if (!this.isRunning) return;
-      
-      this.render();
-      this.animationFrameId = requestAnimationFrame(renderLoop);
-    };
-    
-    renderLoop();
-  }
-  
-  /**
-   * Stop the render loop
-   */
-  stop() {
-    this.isRunning = false;
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId);
-      this.animationFrameId = null;
     }
   }
 }

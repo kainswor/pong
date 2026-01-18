@@ -351,25 +351,9 @@ class Pong {
    */
   drawCourt() {
     const midX = Math.floor(this.width / 2);
-    
-    // Midcourt line (dashed pattern - every other pixel)
-    for (let y = 0; y < this.height; y++) {
-      if (y % 2 === 0) {
-        this.display.setPixel(midX, y, true);
-      }
-    }
-    
-    // Top wall
-    for (let x = 0; x < this.width; x++) {
-      this.display.setPixel(x, 0, true);
-    }
-    
-    // Bottom wall
-    for (let x = 0; x < this.width; x++) {
-      this.display.setPixel(x, this.height - 1, true);
-    }
-    
-    // Draw initial scores
+    this.display.drawLineVDashed(midX, 0, this.height - 1, 2);
+    this.display.drawLineH(0, 0, this.width - 1);
+    this.display.drawLineH(this.height - 1, 0, this.width - 1);
     this.updateScores();
   }
   
@@ -379,25 +363,9 @@ class Pong {
    */
   maintainCourt() {
     const midX = Math.floor(this.width / 2);
-    
-    // Redraw midcourt line (dashed pattern)
-    for (let y = 0; y < this.height; y++) {
-      if (y % 2 === 0) {
-        this.display.setPixel(midX, y, true);
-      }
-    }
-    
-    // Redraw top wall
-    for (let x = 0; x < this.width; x++) {
-      this.display.setPixel(x, 0, true);
-    }
-    
-    // Redraw bottom wall
-    for (let x = 0; x < this.width; x++) {
-      this.display.setPixel(x, this.height - 1, true);
-    }
-    
-    // Redraw scores
+    this.display.drawLineVDashed(midX, 0, this.height - 1, 2);
+    this.display.drawLineH(0, 0, this.width - 1);
+    this.display.drawLineH(this.height - 1, 0, this.width - 1);
     this.updateScores();
   }
   
@@ -407,47 +375,17 @@ class Pong {
   drawNumber(x, y, digit, scale = 1.0) {
     const font = PIXEL_FONT[digit];
     if (!font) return;
-    
-    const fontWidth = 5;
-    const fontHeight = 7;
-    
-    for (let row = 0; row < fontHeight; row++) {
-      for (let col = 0; col < fontWidth; col++) {
-        if (font[row][col] === 1) {
-          // Apply scale - draw multiple pixels for larger scale
-          for (let sy = 0; sy < scale; sy++) {
-            for (let sx = 0; sx < scale; sx++) {
-              const px = Math.floor(x + col * scale + sx);
-              const py = Math.floor(y + row * scale + sy);
-              if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-                this.display.setPixel(px, py, true);
-              }
-            }
-          }
-        }
-      }
-    }
+    this.display.drawPattern(font, x, y, Math.max(1, Math.floor(scale)));
   }
   
   /**
    * Draw a score (0-5) at position
    */
   drawScore(x, y, score) {
-    // Clear previous score area (5x7 pixels)
-    for (let py = 0; py < 7; py++) {
-      for (let px = 0; px < 5; px++) {
-        const clearX = x + px;
-        const clearY = y + py;
-        if (clearX >= 0 && clearX < this.width && clearY >= 0 && clearY < this.height) {
-          // Don't clear if it's part of the court
-          if (clearX !== Math.floor(this.width / 2) && clearY !== 0 && clearY !== this.height - 1) {
-            this.display.setPixel(clearX, clearY, false);
-          }
-        }
-      }
-    }
-    
-    // Draw new score
+    const midX = Math.floor(this.width / 2);
+    this.display.clearRect(x, y, 5, 7, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+    });
     this.drawNumber(x, y, score);
   }
   
@@ -468,34 +406,15 @@ class Pong {
    */
   clearCountdownArea() {
     const midX = Math.floor(this.width / 2);
-    const clearSize = 20; // Large enough to clear any scale
+    const clearSize = 20;
     const centerX = Math.floor(this.width / 2);
     const centerY = Math.floor(this.height / 2);
-    
-    // Clear all pixels in the area (including middle line pixels)
-    for (let py = centerY - clearSize; py < centerY + clearSize; py++) {
-      for (let px = centerX - clearSize; px < centerX + clearSize; px++) {
-        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-          // Don't clear court elements (walls)
-          if (px !== midX && py !== 0 && py !== this.height - 1) {
-            this.display.setPixel(px, py, false);
-          }
-        }
-      }
-    }
-    
-    // Restore the dotted middle line pattern in the cleared area
-    // ON for even y, OFF for odd y (explicitly set both to restore pattern)
-    for (let py = centerY - clearSize; py < centerY + clearSize; py++) {
-      if (py >= 0 && py < this.height) {
-        if (py % 2 === 0) {
-          // Even y positions should be ON
-          this.display.setPixel(midX, py, true);
-        } else {
-          // Odd y positions should be OFF (explicitly set to false)
-          this.display.setPixel(midX, py, false);
-        }
-      }
+    this.display.clearRect(centerX - clearSize, centerY - clearSize, 2 * clearSize, 2 * clearSize, {
+      preserve: (px, py) => py === 0 || py === this.height - 1
+    });
+    for (let py = Math.max(0, centerY - clearSize); py < Math.min(this.height, centerY + clearSize); py++) {
+      if (py % 2 === 0) this.display.setPixel(midX, py, true);
+      else this.display.setPixel(midX, py, false);
     }
   }
   
@@ -628,211 +547,49 @@ class Pong {
     this.clearButtonFrame(buttonX, buttonY, buttonSize);
     
     if (blink === 0) {
-      // Draw frame (1 pixel border)
       const midX = Math.floor(this.width / 2);
-      
-      // Top and bottom borders
-      for (let x = buttonX; x < buttonX + buttonSize; x++) {
-        if (x >= 0 && x < this.width) {
-          // Top
-          if (buttonY >= 0 && buttonY < this.height) {
-            if (x !== midX && buttonY !== 0 && buttonY !== this.height - 1) {
-              this.display.setPixel(x, buttonY, true);
-            }
-          }
-          // Bottom
-          if (buttonY + buttonSize - 1 >= 0 && buttonY + buttonSize - 1 < this.height) {
-            if (x !== midX && buttonY + buttonSize - 1 !== 0 && buttonY + buttonSize - 1 !== this.height - 1) {
-              this.display.setPixel(x, buttonY + buttonSize - 1, true);
-            }
-          }
-        }
-      }
-      
-      // Left and right borders
-      for (let y = buttonY; y < buttonY + buttonSize; y++) {
-        if (y >= 0 && y < this.height) {
-          // Left
-          if (buttonX >= 0 && buttonX < this.width) {
-            if (buttonX !== midX && y !== 0 && y !== this.height - 1) {
-              this.display.setPixel(buttonX, y, true);
-            }
-          }
-          // Right
-          if (buttonX + buttonSize - 1 >= 0 && buttonX + buttonSize - 1 < this.width) {
-            if (buttonX + buttonSize - 1 !== midX && y !== 0 && y !== this.height - 1) {
-              this.display.setPixel(buttonX + buttonSize - 1, y, true);
-            }
-          }
-        }
-      }
+      this.display.drawRectOutline(buttonX, buttonY, buttonSize, buttonSize, {
+        preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+      });
     }
   }
   
-  /**
-   * Clear start arrow area (with padding to prevent animation overlap)
-   */
   clearStartArrowArea() {
     const midX = Math.floor(this.width / 2);
     const buttonSize = 20;
-    const padding = 5; // Clear area padding around button
-    // Use calculated position from calculateMenuFramePositions
+    const padding = 5;
     const buttonX = this.startButtonFrameX;
     const buttonY = this.startButtonFrameY;
-    
-    // Clear button area plus padding
-    for (let py = buttonY - padding; py < buttonY + buttonSize + padding; py++) {
-      for (let px = buttonX - padding; px < buttonX + buttonSize + padding; px++) {
-        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-          if (px !== midX && py !== 0 && py !== this.height - 1) {
-            this.display.setPixel(px, py, false);
-          }
-        }
-      }
-    }
+    this.display.clearRect(buttonX - padding, buttonY - padding, buttonSize + 2 * padding, buttonSize + 2 * padding, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+    });
   }
   
-  /**
-   * Clear Player 1 frame area
-   */
   clearPlayer1FrameArea() {
     const midX = Math.floor(this.width / 2);
     const buttonSize = 20;
     const padding = 5;
-    
-    for (let py = this.player1FrameY - padding; py < this.player1FrameY + buttonSize + padding; py++) {
-      for (let px = this.player1FrameX - padding; px < this.player1FrameX + buttonSize + padding; px++) {
-        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-          if (px !== midX && py !== 0 && py !== this.height - 1) {
-            this.display.setPixel(px, py, false);
-          }
-        }
-      }
-    }
+    this.display.clearRect(this.player1FrameX - padding, this.player1FrameY - padding, buttonSize + 2 * padding, buttonSize + 2 * padding, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+    });
   }
   
-  /**
-   * Draw Player 1 frame with "1P" text (non-blinking frame)
-   */
   drawPlayer1Frame() {
     const midX = Math.floor(this.width / 2);
     const buttonSize = 20;
-    
-    // Clear area before drawing
     this.clearPlayer1FrameArea();
-    
     const buttonX = this.player1FrameX;
     const buttonY = this.player1FrameY;
-    
-    // Draw non-blinking frame (always visible)
-    // Top and bottom borders
-    for (let x = buttonX; x < buttonX + buttonSize; x++) {
-      if (x >= 0 && x < this.width) {
-        // Top
-        if (buttonY >= 0 && buttonY < this.height) {
-          if (x !== midX && buttonY !== 0 && buttonY !== this.height - 1) {
-            this.display.setPixel(x, buttonY, true);
-          }
-        }
-        // Bottom
-        if (buttonY + buttonSize - 1 >= 0 && buttonY + buttonSize - 1 < this.height) {
-          if (x !== midX && buttonY + buttonSize - 1 !== 0 && buttonY + buttonSize - 1 !== this.height - 1) {
-            this.display.setPixel(x, buttonY + buttonSize - 1, true);
-          }
-        }
-      }
-    }
-    
-    // Left and right borders
-    for (let y = buttonY; y < buttonY + buttonSize; y++) {
-      if (y >= 0 && y < this.height) {
-        // Left
-        if (buttonX >= 0 && buttonX < this.width) {
-          if (buttonX !== midX && y !== 0 && y !== this.height - 1) {
-            this.display.setPixel(buttonX, y, true);
-          }
-        }
-        // Right
-        if (buttonX + buttonSize - 1 >= 0 && buttonX + buttonSize - 1 < this.width) {
-          if (buttonX + buttonSize - 1 !== midX && y !== 0 && y !== this.height - 1) {
-            this.display.setPixel(buttonX + buttonSize - 1, y, true);
-          }
-        }
-      }
-    }
-    
-    // Draw "1P" text inside frame (large block letters)
-    // 1 pixel gap from frame edges, 1 pixel closer between 1 and P
-    const letterPatterns = LARGE_LETTER_PATTERNS;
-    const charWidth = 7;
-    const scale = 1.5;
-    const text = '1P';
-    const edgeGap = 1; // 1 pixel gap from frame edges
-    const charSpacing = charWidth * scale - 1; // 1 pixel closer than normal spacing
-    
-    // Calculate total width: 1 char width + spacing + P char width
-    const digit1Width = 5 * scale; // PIXEL_FONT digit 1 is 5 wide
-    const pWidth = 7 * scale; // Letter P is 7 wide
-    const totalTextWidth = digit1Width + charSpacing + pWidth;
-    
+    this.display.drawRectOutline(buttonX, buttonY, buttonSize, buttonSize, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+    });
+    const scale = 2; // was 1.5; drawPattern uses int
+    const edgeGap = 1;
     const textStartX = buttonX + edgeGap;
-    const textStartY = buttonY + edgeGap + 2; // Moved down 2 pixels
-    
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      if (char === ' ') continue;
-      
-      let pattern;
-      let charX;
-      let charY;
-      if (char === '1') {
-        // Use PIXEL_FONT for digit 1
-        pattern = PIXEL_FONT[1];
-        // Draw using 5x7 pattern
-        charX = textStartX;
-        charY = textStartY;
-        for (let row = 0; row < 7; row++) {
-          for (let col = 0; col < 5; col++) {
-            if (pattern[row] && pattern[row][col] === 1) {
-              for (let sy = 0; sy < scale; sy++) {
-                for (let sx = 0; sx < scale; sx++) {
-                  const px = Math.floor(charX + col * scale + sx);
-                  const py = Math.floor(charY + row * scale + sy);
-                  if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-                    if (px !== midX && py !== 0 && py !== this.height - 1) {
-                      this.display.setPixel(px, py, true);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      } else if (char === 'P') {
-        // Use large letter pattern for P
-        pattern = letterPatterns['P'];
-        // Position P 1 pixel closer to 1 (after digit1Width + reduced spacing)
-        charX = textStartX + digit1Width + (charSpacing - charWidth * scale + 1);
-        const charY = textStartY;
-        for (let row = 0; row < 9; row++) {
-          for (let col = 0; col < 7; col++) {
-            if (pattern[row] && pattern[row][col] === 1) {
-              for (let sy = 0; sy < scale; sy++) {
-                for (let sx = 0; sx < scale; sx++) {
-                  const px = Math.floor(charX + col * scale + sx);
-                  const py = Math.floor(charY + row * scale + sy);
-                  if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-                    if (px !== midX && py !== 0 && py !== this.height - 1) {
-                      this.display.setPixel(px, py, true);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+    const textStartY = buttonY + edgeGap + 2;
+    const digit1W = 5 * 2;
+    this.display.drawPattern(PIXEL_FONT[1], textStartX, textStartY, scale);
+    this.display.drawPattern(LARGE_LETTER_PATTERNS['P'], textStartX + digit1W + 1, textStartY, scale);
   }
   
   /**
@@ -892,28 +649,17 @@ class Pong {
     };
   }
   
-  /**
-   * Clear restart arrow area (with padding to prevent animation overlap)
-   */
   clearRestartArrowArea() {
     const midX = Math.floor(this.width / 2);
     const centerY = Math.floor(this.height / 2);
     const buttonSize = 20;
-    const padding = 5; // Clear area padding around button
+    const padding = 5;
     const rightSideCenterX = midX + Math.floor((this.width - midX) / 2);
     const buttonX = rightSideCenterX - Math.floor(buttonSize / 2);
     const buttonY = centerY - Math.floor(buttonSize / 2);
-    
-    // Clear button area plus padding
-    for (let py = buttonY - padding; py < buttonY + buttonSize + padding; py++) {
-      for (let px = buttonX - padding; px < buttonX + buttonSize + padding; px++) {
-        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-          if (px !== midX && py !== 0 && py !== this.height - 1) {
-            this.display.setPixel(px, py, false);
-          }
-        }
-      }
-    }
+    this.display.clearRect(buttonX - padding, buttonY - padding, buttonSize + 2 * padding, buttonSize + 2 * padding, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+    });
   }
   
   /**
@@ -1011,24 +757,12 @@ class Pong {
     };
   }
   
-  /**
-   * Clear PONG title area
-   */
   clearPongTitleArea() {
-    // Clear area where PONG title might be (large enough for scaled text)
     const clearSize = 50;
     const midX = Math.floor(this.width / 2);
-    
-    // Clear previous position
-    for (let py = this.prevPongTitleY - clearSize; py < this.prevPongTitleY + clearSize; py++) {
-      for (let px = this.prevPongTitleX - clearSize; px < this.prevPongTitleX + clearSize; px++) {
-        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-          if (px !== midX && py !== 0 && py !== this.height - 1) {
-            this.display.setPixel(px, py, false);
-          }
-        }
-      }
-    }
+    this.display.clearRect(this.prevPongTitleX - clearSize, this.prevPongTitleY - clearSize, 2 * clearSize, 2 * clearSize, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+    });
   }
   
   /**
@@ -1062,37 +796,15 @@ class Pong {
       this.pongTitleVy = -this.pongTitleVy;
     }
     
-    // Draw "PONG" text at position (large scale)
+    // Draw "PONG" text at position (large scale). drawPattern has no court preserve; PONG stays in center and rarely hits walls.
     const letters = ['P', 'O', 'N', 'G'];
     const charWidth = 7;
-    const scale = 2.0; // Large scale for visibility
+    const scale = 2;
     const startX = Math.floor(this.pongTitleX - (letters.length * charWidth * scale) / 2);
     const startY = Math.floor(this.pongTitleY - (9 * scale) / 2);
-    
-    const letterPatterns = LARGE_LETTER_PATTERNS;
     for (let i = 0; i < letters.length; i++) {
-      const pattern = letterPatterns[letters[i]];
-      if (pattern) {
-        const charX = startX + (i * charWidth * scale);
-        for (let row = 0; row < 9; row++) {
-          for (let col = 0; col < 7; col++) {
-            if (pattern[row] && pattern[row][col] === 1) {
-              for (let sy = 0; sy < scale; sy++) {
-                for (let sx = 0; sx < scale; sx++) {
-                  const px = Math.floor(charX + col * scale + sx);
-                  const py = Math.floor(startY + row * scale + sy);
-                  if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-                    const midX = Math.floor(this.width / 2);
-                    if (px !== midX && py !== 0 && py !== this.height - 1) {
-                      this.display.setPixel(px, py, true);
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+      const pattern = LARGE_LETTER_PATTERNS[letters[i]];
+      if (pattern) this.display.drawPattern(pattern, startX + i * charWidth * scale, startY, scale);
     }
     
     // Store current position for next frame cleanup
@@ -1100,31 +812,19 @@ class Pong {
     this.prevPongTitleY = Math.floor(this.pongTitleY);
   }
   
-  /**
-   * Clear Player 2 frame area (including triangles outside frame)
-   */
   clearPlayer2FrameArea() {
     const midX = Math.floor(this.width / 2);
     const buttonSize = 20;
     const padding = 5;
-    const triangleOffset = 3; // Triangles are outside frame by this amount
-    const triangleHeight = 6; // Height of triangles (2x larger)
-    
-    // Clear frame area plus triangles outside
+    const triangleOffset = 3;
+    const triangleHeight = 6;
     const clearTop = this.player2FrameY - padding - triangleOffset - triangleHeight;
     const clearBottom = this.player2FrameY + buttonSize + padding + triangleOffset + triangleHeight;
-    const clearLeft = this.player2FrameX - padding - 6; // Extra for triangle width (2x larger)
+    const clearLeft = this.player2FrameX - padding - 6;
     const clearRight = this.player2FrameX + buttonSize + padding + 6;
-    
-    for (let py = clearTop; py < clearBottom; py++) {
-      for (let px = clearLeft; px < clearRight; px++) {
-        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-          if (px !== midX && py !== 0 && py !== this.height - 1) {
-            this.display.setPixel(px, py, false);
-          }
-        }
-      }
-    }
+    this.display.clearRect(clearLeft, clearTop, clearRight - clearLeft, clearBottom - clearTop, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+    });
   }
   
   /**
@@ -1207,42 +907,9 @@ class Pong {
     this.clearButtonFrame(buttonX, buttonY, buttonSize);
     
     if (shouldBlink) {
-      // Draw frame (1 pixel border)
-      // Top and bottom borders
-      for (let x = buttonX; x < buttonX + buttonSize; x++) {
-        if (x >= 0 && x < this.width) {
-          // Top
-          if (buttonY >= 0 && buttonY < this.height) {
-            if (x !== midX && buttonY !== 0 && buttonY !== this.height - 1) {
-              this.display.setPixel(x, buttonY, true);
-            }
-          }
-          // Bottom
-          if (buttonY + buttonSize - 1 >= 0 && buttonY + buttonSize - 1 < this.height) {
-            if (x !== midX && buttonY + buttonSize - 1 !== 0 && buttonY + buttonSize - 1 !== this.height - 1) {
-              this.display.setPixel(x, buttonY + buttonSize - 1, true);
-            }
-          }
-        }
-      }
-      
-      // Left and right borders
-      for (let y = buttonY; y < buttonY + buttonSize; y++) {
-        if (y >= 0 && y < this.height) {
-          // Left
-          if (buttonX >= 0 && buttonX < this.width) {
-            if (buttonX !== midX && y !== 0 && y !== this.height - 1) {
-              this.display.setPixel(buttonX, y, true);
-            }
-          }
-          // Right
-          if (buttonX + buttonSize - 1 >= 0 && buttonX + buttonSize - 1 < this.width) {
-            if (buttonX + buttonSize - 1 !== midX && y !== 0 && y !== this.height - 1) {
-              this.display.setPixel(buttonX + buttonSize - 1, y, true);
-            }
-          }
-        }
-      }
+      this.display.drawRectOutline(buttonX, buttonY, buttonSize, buttonSize, {
+        preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+      });
     }
     
     // Draw up/down arrow triangles OUTSIDE the frame (on the outside edges)
@@ -1261,37 +928,14 @@ class Pong {
     const downFilled = this.aiDifficultyLevel > 1;
     this.drawSmallTriangle(centerX, downTriangleY, 'down', downFilled, midX);
     
-    // Draw selected number (1, 2, or 3) as large bold numeral in center
     const digit = this.aiDifficultyLevel;
-    const digitPattern = PIXEL_FONT[digit];
     const digitWidth = 5;
-    const digitHeight = 7;
-    const scale = 2.0; // Large scale for visibility
+    const scale = 2;
     const digitX = buttonX + Math.floor((buttonSize - digitWidth * scale) / 2);
-    const digitY = buttonY + Math.floor((buttonSize - digitHeight * scale) / 2);
-    
-    for (let row = 0; row < digitHeight; row++) {
-      for (let col = 0; col < digitWidth; col++) {
-        if (digitPattern[row] && digitPattern[row][col] === 1) {
-          for (let sy = 0; sy < scale; sy++) {
-            for (let sx = 0; sx < scale; sx++) {
-              const px = Math.floor(digitX + col * scale + sx);
-              const py = Math.floor(digitY + row * scale + sy);
-              if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-                if (px !== midX && py !== 0 && py !== this.height - 1) {
-                  this.display.setPixel(px, py, true);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+    const digitY = buttonY + Math.floor((buttonSize - 7 * scale) / 2);
+    this.display.drawPattern(PIXEL_FONT[digit], digitX, digitY, scale);
   }
   
-  /**
-   * Draw menu state
-   */
   drawMenu() {
     this.drawBouncingPongTitle();
     this.drawPlayer1Frame();
@@ -1568,30 +1212,16 @@ class Pong {
     this.drawRestartArrow();
   }
   
-  /**
-   * Clear game over message area
-   * Preserves button area on right side (restart button)
-   */
   clearGameOverArea() {
     const centerX = Math.floor(this.width / 2);
     const centerY = Math.floor(this.height / 2);
     const clearWidth = 70;
     const clearHeight = 20;
-    const buttonPadding = 30; // Keep right side clear for restart button
-    
-    for (let py = centerY - clearHeight; py < centerY + clearHeight; py++) {
-      for (let px = centerX - clearWidth; px < centerX + clearWidth; px++) {
-        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-          const midX = Math.floor(this.width / 2);
-          // Don't clear restart button area (right side)
-          const isInButtonArea = px > this.width - buttonPadding && 
-                                 (py > centerY - 25 && py < centerY + 25);
-          if (px !== midX && py !== 0 && py !== this.height - 1 && !isInButtonArea) {
-            this.display.setPixel(px, py, false);
-          }
-        }
-      }
-    }
+    const buttonPadding = 30;
+    const midX = Math.floor(this.width / 2);
+    this.display.clearRect(centerX - clearWidth, centerY - clearHeight, 2 * clearWidth, 2 * clearHeight, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1 || (px > this.width - buttonPadding && py > centerY - 25 && py < centerY + 25)
+    });
   }
   
   /**
@@ -1831,24 +1461,14 @@ class Pong {
     this.pauseButtonScaleDirection = 1;
   }
   
-  /**
-   * Clear pause button area
-   */
   clearPauseArea() {
     const centerX = Math.floor(this.width / 2);
     const centerY = Math.floor(this.height / 2);
     const clearSize = 20;
     const midX = Math.floor(this.width / 2);
-    
-    for (let py = centerY - clearSize; py < centerY + clearSize; py++) {
-      for (let px = centerX - clearSize; px < centerX + clearSize; px++) {
-        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
-          if (px !== midX && py !== 0 && py !== this.height - 1) {
-            this.display.setPixel(px, py, false);
-          }
-        }
-      }
-    }
+    this.display.clearRect(centerX - clearSize, centerY - clearSize, 2 * clearSize, 2 * clearSize, {
+      preserve: (px, py) => px === midX || py === 0 || py === this.height - 1
+    });
   }
   
   /**
@@ -2040,97 +1660,37 @@ class Pong {
    */
   clearPreviousFrame() {
     const midX = Math.floor(this.width / 2);
-    
-    // Clear left paddle - always clear, even if overlapping score (score will be redrawn)
-    for (let py = 0; py < this.PADDLE_HEIGHT; py++) {
-      const y = this.prevLeftPaddleY + py;
-      if (y >= 0 && y < this.height) {
-        for (let px = 0; px < this.PADDLE_WIDTH; px++) {
-          const x = this.PADDLE_LEFT_X + px;
-          if (x >= 0 && x < this.width) {
-            // Don't clear if it's part of the court
-            if (x !== midX && y !== 0 && y !== this.height - 1) {
-              this.display.setPixel(x, y, false);
-            }
-          }
-        }
-      }
-    }
-    
-    // Clear right paddle - always clear, even if overlapping score (score will be redrawn)
-    for (let py = 0; py < this.PADDLE_HEIGHT; py++) {
-      const y = this.prevRightPaddleY + py;
-      if (y >= 0 && y < this.height) {
-        for (let px = 0; px < this.PADDLE_WIDTH; px++) {
-          const x = this.PADDLE_RIGHT_X + px;
-          if (x >= 0 && x < this.width) {
-            // Don't clear if it's part of the court
-            if (x !== midX && y !== 0 && y !== this.height - 1) {
-              this.display.setPixel(x, y, false);
-            }
-          }
-        }
-      }
-    }
-    
-    // Clear ball
+    const preserve = (px, py) => px === midX || py === 0 || py === this.height - 1;
+    this.display.clearRect(this.PADDLE_LEFT_X, this.prevLeftPaddleY, this.PADDLE_WIDTH, this.PADDLE_HEIGHT, { preserve });
+    this.display.clearRect(this.PADDLE_RIGHT_X, this.prevRightPaddleY, this.PADDLE_WIDTH, this.PADDLE_HEIGHT, { preserve });
     const ballX = Math.floor(this.prevBallX);
     const ballY = Math.floor(this.prevBallY);
     if (ballX >= 0 && ballX < this.width && ballY >= 0 && ballY < this.height) {
-      // Always clear the ball pixel first
-      this.display.setPixel(ballX, ballY, false);
-      
-      // Then redraw court elements if the ball was on them
-      if (ballX === midX) {
-        // Ball was on center line - redraw center line pixel if it should be there (dashed pattern)
-        if (ballY % 2 === 0) {
-          this.display.setPixel(midX, ballY, true);
-        }
-      } else if (ballY === 0 || ballY === this.height - 1) {
-        // Ball was on wall - redraw wall pixel
-        this.display.setPixel(ballX, ballY, true);
-      }
+      this.display.clearRect(ballX, ballY, 1, 1);
+      if (ballX === midX && ballY % 2 === 0) this.display.setPixel(midX, ballY, true);
+      else if (ballY === 0 || ballY === this.height - 1) this.display.setPixel(ballX, ballY, true);
     }
-    
-    // Redraw scores after clearing (in case paddles overlapped them)
     this.updateScores();
   }
   
   /**
-   * Draw current frame's dynamic elements
+   * Draw current frame's dynamic elements.
+   * @param {number} [alpha] - Interpolation factor 0..1. When provided with prevState, positions are interpolated.
+   * @param {Object} [prevState] - { ball: {x,y}, leftPaddle: {y}, rightPaddle: {y} } at start of last logic tick.
    */
-  drawCurrentFrame() {
-    // Draw left paddle
-    for (let py = 0; py < this.PADDLE_HEIGHT; py++) {
-      const y = Math.floor(this.leftPaddle.y + py);
-      if (y >= 0 && y < this.height) {
-        for (let px = 0; px < this.PADDLE_WIDTH; px++) {
-          const x = this.PADDLE_LEFT_X + px;
-          if (x >= 0 && x < this.width) {
-            this.display.setPixel(x, y, true);
-          }
-        }
-      }
-    }
-    
-    // Draw right paddle
-    for (let py = 0; py < this.PADDLE_HEIGHT; py++) {
-      const y = Math.floor(this.rightPaddle.y + py);
-      if (y >= 0 && y < this.height) {
-        for (let px = 0; px < this.PADDLE_WIDTH; px++) {
-          const x = this.PADDLE_RIGHT_X + px;
-          if (x >= 0 && x < this.width) {
-            this.display.setPixel(x, y, true);
-          }
-        }
-      }
-    }
-    
-    // Draw ball
-    const ballX = Math.floor(this.ball.x);
-    const ballY = Math.floor(this.ball.y);
-    if (ballX >= 0 && ballX < this.width && ballY >= 0 && ballY < this.height) {
-      this.display.setPixel(ballX, ballY, true);
+  drawCurrentFrame(alpha, prevState) {
+    const a = alpha != null ? alpha : 1;
+    const leftY = prevState ? prevState.leftPaddle.y + (this.leftPaddle.y - prevState.leftPaddle.y) * a : this.leftPaddle.y;
+    const rightY = prevState ? prevState.rightPaddle.y + (this.rightPaddle.y - prevState.rightPaddle.y) * a : this.rightPaddle.y;
+    const ballX = prevState ? prevState.ball.x + (this.ball.x - prevState.ball.x) * a : this.ball.x;
+    const ballY = prevState ? prevState.ball.y + (this.ball.y - prevState.ball.y) * a : this.ball.y;
+
+    this.display.drawRectFilled(this.PADDLE_LEFT_X, Math.floor(leftY), this.PADDLE_WIDTH, this.PADDLE_HEIGHT);
+    this.display.drawRectFilled(this.PADDLE_RIGHT_X, Math.floor(rightY), this.PADDLE_WIDTH, this.PADDLE_HEIGHT);
+    const bx = Math.floor(ballX);
+    const by = Math.floor(ballY);
+    if (bx >= 0 && bx < this.width && by >= 0 && by < this.height) {
+      this.display.drawRectFilled(bx, by, 1, 1);
     }
   }
   
@@ -2328,29 +1888,23 @@ class Pong {
       // Message animates continuously until restart
       return;
     } else if (this.gameState === 'PLAYING') {
-      // Normal game play
-      // Update paddles
-      this.updatePaddle(this.leftPaddle, this.leftController);
-      this.updatePaddle(this.rightPaddle, this.rightController);
-      
-      // Update ball
-      this.updateBall();
-      
-      // Check for game end
-      this.checkGameEnd();
-      
-      // Clear previous frame
-      this.clearPreviousFrame();
-      
-      // Draw current frame
-      this.drawCurrentFrame();
-      
-      // Store current positions for next frame
-      this.prevLeftPaddleY = Math.floor(this.leftPaddle.y);
-      this.prevRightPaddleY = Math.floor(this.rightPaddle.y);
-      this.prevBallX = this.ball.x;
-      this.prevBallY = this.ball.y;
+      // Logic and draw are done by the main loop (updateLogic + clearPreviousFrame + drawCurrentFrame)
+      return;
     }
+  }
+
+  /**
+   * Logic-only update for PLAYING (called from main loop at 60Hz).
+   */
+  updateLogic(dtMs) {
+    this.updatePaddle(this.leftPaddle, this.leftController);
+    this.updatePaddle(this.rightPaddle, this.rightController);
+    this.updateBall();
+    this.checkGameEnd();
+    this.prevLeftPaddleY = Math.floor(this.leftPaddle.y);
+    this.prevRightPaddleY = Math.floor(this.rightPaddle.y);
+    this.prevBallX = this.ball.x;
+    this.prevBallY = this.ball.y;
   }
 }
 
@@ -2359,13 +1913,46 @@ const canvas = document.getElementById('display');
 const display = new PixelDisplay(canvas, 160, 120, 800, 600);
 const game = new Pong(display);
 
-// Start display render loop
-display.start();
+const LOGIC_HZ = 60;
+const DT_MS = 1000 / LOGIC_HZ;
+const MAX_FRAME_MS = 200;
+const MAX_UPDATES_PER_FRAME = 5;
 
-// Game loop
-function gameLoop() {
-  game.update();
+let lastTs = 0;
+let accumulator = 0;
+let lastRenderTime;
+
+function gameLoop(ts) {
+  if (!lastTs) lastTs = ts;
+  let frameMs = Math.min(ts - lastTs, MAX_FRAME_MS);
+  lastTs = ts;
+  accumulator += frameMs;
+
+  let prevState = null;
+  if (game.gameState === 'PLAYING') {
+    game.maintainCourt();
+    let n = 0;
+    while (accumulator >= DT_MS && n < MAX_UPDATES_PER_FRAME) {
+      prevState = { ball: { x: game.ball.x, y: game.ball.y }, leftPaddle: { y: game.leftPaddle.y }, rightPaddle: { y: game.rightPaddle.y } };
+      game.updateLogic(DT_MS);
+      accumulator -= DT_MS;
+      n++;
+    }
+    if (prevState == null) prevState = { ball: { x: game.ball.x, y: game.ball.y }, leftPaddle: { y: game.leftPaddle.y }, rightPaddle: { y: game.rightPaddle.y } };
+  } else {
+    game.update(DT_MS);
+  }
+
+  const alpha = accumulator / DT_MS;
+  const now = performance.now();
+  const dtSinceLastRender = lastRenderTime != null ? now - lastRenderTime : 0;
+  if (game.gameState === 'PLAYING') {
+    game.clearPreviousFrame();
+    game.drawCurrentFrame(alpha, prevState);
+  }
+  display.render(alpha, { now, dtSinceLastRender });
+  lastRenderTime = now;
+
   requestAnimationFrame(gameLoop);
 }
-
-gameLoop();
+requestAnimationFrame(gameLoop);

@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "build:gh-pages": "node scripts/build-gh-pages.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest"
   },
   "devDependencies": {
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "vitest": "^2.1.0"
   }
 }
