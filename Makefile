@@ -1,4 +1,4 @@
-.PHONY: build run run-debug clean help
+.PHONY: build run run-debug stop restart logs clean rebuild help
 
 # Docker image name
 IMAGE_NAME := pong
@@ -42,8 +42,21 @@ run-debug: ## Run the container with verbose debug mode
 
 stop: ## Stop and remove the running container
 	@echo "Stopping container..."
-	-docker stop $(CONTAINER_NAME)
+	-docker stop $(CONTAINER_NAME) 2>/dev/null || true
+	-docker rm $(CONTAINER_NAME) 2>/dev/null || true
 	@echo "Container stopped"
+
+restart: ## Force kill any running instances and start the container
+	@echo "Force killing any running instances..."
+	-docker kill $(CONTAINER_NAME) 2>/dev/null || true
+	-docker rm -f $(CONTAINER_NAME) 2>/dev/null || true
+	@echo "Starting container..."
+	docker run -d \
+		--name $(CONTAINER_NAME) \
+		-p $(HOST_PORT):$(CONTAINER_PORT) \
+		--rm \
+		$(IMAGE_NAME)
+	@echo "Container restarted on http://localhost:$(HOST_PORT)"
 
 logs: ## View container logs
 	docker logs -f $(CONTAINER_NAME)
