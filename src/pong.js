@@ -18,7 +18,11 @@ class KeyboardController extends PlayerController {
     super();
     this.keys = {
       ArrowUp: false,
-      ArrowDown: false
+      ArrowDown: false,
+      w: false,
+      W: false,
+      s: false,
+      S: false
     };
     
     document.addEventListener('keydown', (e) => {
@@ -37,8 +41,10 @@ class KeyboardController extends PlayerController {
   }
   
   update(paddle, ball, gameState) {
-    if (this.keys.ArrowUp) return 'up';
-    if (this.keys.ArrowDown) return 'down';
+    // Arrow keys or WASD for up
+    if (this.keys.ArrowUp || this.keys.w || this.keys.W) return 'up';
+    // Arrow keys or WASD for down
+    if (this.keys.ArrowDown || this.keys.s || this.keys.S) return 'down';
     return null;
   }
 }
@@ -60,8 +66,8 @@ class AIController extends PlayerController {
     // Skill-based parameters
     this.maxReactionTime = 500; // ms - increased for slower reactions
     this.minReactionTime = 150; // ms - increased so nothing is instant
-    this.maxAccelRate = 0.0225; // Reduced by 25% from 0.03
-    this.minAccelRate = 0.0075; // Reduced by 25% from 0.01
+    this.maxAccelRate = 0.016875; // Reduced by another 25% (0.0225 * 0.75)
+    this.minAccelRate = 0.005625; // Reduced by another 25% (0.0075 * 0.75)
     this.smoothingFactor = 0.15; // Smoothing factor for velocity interpolation (0-1, lower = smoother)
   }
   
@@ -126,8 +132,9 @@ class AIController extends PlayerController {
     // This creates smooth, natural motion
     this.currentVelocity += (targetVelocity - this.currentVelocity) * this.smoothingFactor;
     
-    // Limit velocity to 95% of max paddle speed (CRITICAL - never exceed human player speed)
-    const aiMaxSpeed = maxSpeed * 0.95; // 95% of human speed
+    // Limit velocity to ~71% of max paddle speed (reduced by another 25% from 95%)
+    // 95% * 0.75 = 71.25%, rounded to 71%
+    const aiMaxSpeed = maxSpeed * 0.71; // 71% of human speed (25% slower)
     this.currentVelocity = Math.max(-aiMaxSpeed, Math.min(aiMaxSpeed, this.currentVelocity));
     
     // Update paddle position directly
@@ -276,6 +283,27 @@ class Pong {
     this.savedState = null;
     this.resumingFromPause = false; // Flag to track if we're resuming from pause
     
+    // Volley counter for speed increase
+    this.volleyCount = 0;
+    
+    // Current speed multiplier for AI skill scaling
+    this.currentSpeedMultiplier = 1.0;
+    
+    // AI difficulty level (1, 2, or 3)
+    this.aiDifficultyLevel = 2; // Default: level 2 (normal skill 0.5)
+    
+    // Menu frame positions
+    this.player1FrameX = 0;
+    this.player1FrameY = 0;
+    this.player2FrameX = 0;
+    this.player2FrameY = 0;
+    this.startButtonFrameX = 0;
+    this.startButtonFrameY = 0;
+    
+    // Previous game over message position for cleanup
+    this.prevGameOverStartX = 0;
+    this.prevGameOverStartY = 0;
+    
     // Bouncing PONG title in menu
     this.pongTitleX = Math.floor(this.width / 2);
     this.pongTitleY = Math.floor(this.height / 2);
@@ -328,6 +356,9 @@ class Pong {
     this.startButtonBounds = null;
     this.restartButtonBounds = null;
     
+    // Calculate menu frame positions (evenly spaced on left half, mirrored on right)
+    this.calculateMenuFramePositions();
+    
     // Draw court (always-on elements)
     this.drawCourt();
     
@@ -336,6 +367,34 @@ class Pong {
     
     // Setup pause key handler
     this.setupPauseHandler();
+  }
+  
+  /**
+   * Calculate menu frame positions (evenly spaced on left half, mirrored on right)
+   */
+  calculateMenuFramePositions() {
+    const midX = Math.floor(this.width / 2);
+    const centerY = Math.floor(this.height / 2);
+    const buttonSize = 20;
+    
+    // Left half: divide into 3 equal sections
+    // Player 1 at 1/3, Start at 2/3
+    const leftSectionWidth = midX / 3;
+    const player1CenterX = Math.floor(leftSectionWidth);
+    const startButtonCenterX = Math.floor(leftSectionWidth * 2);
+    
+    // Player 1 frame position (left side)
+    this.player1FrameX = player1CenterX - Math.floor(buttonSize / 2);
+    this.player1FrameY = centerY - Math.floor(buttonSize / 2);
+    
+    // Start button frame position (left side, middle)
+    this.startButtonFrameX = startButtonCenterX - Math.floor(buttonSize / 2);
+    this.startButtonFrameY = centerY - Math.floor(buttonSize / 2);
+    
+    // Player 2 frame position (right side, mirrored from Player 1)
+    const player2CenterX = this.width - player1CenterX;
+    this.player2FrameX = player2CenterX - Math.floor(buttonSize / 2);
+    this.player2FrameY = centerY - Math.floor(buttonSize / 2);
   }
   
   /**
@@ -667,12 +726,11 @@ class Pong {
    */
   clearStartArrowArea() {
     const midX = Math.floor(this.width / 2);
-    const centerY = Math.floor(this.height / 2);
     const buttonSize = 20;
     const padding = 5; // Clear area padding around button
-    const leftSideCenterX = Math.floor(midX / 2);
-    const buttonX = leftSideCenterX - Math.floor(buttonSize / 2);
-    const buttonY = centerY - Math.floor(buttonSize / 2);
+    // Use calculated position from calculateMenuFramePositions
+    const buttonX = this.startButtonFrameX;
+    const buttonY = this.startButtonFrameY;
     
     // Clear button area plus padding
     for (let py = buttonY - padding; py < buttonY + buttonSize + padding; py++) {
@@ -687,6 +745,149 @@ class Pong {
   }
   
   /**
+   * Clear Player 1 frame area
+   */
+  clearPlayer1FrameArea() {
+    const midX = Math.floor(this.width / 2);
+    const buttonSize = 20;
+    const padding = 5;
+    
+    for (let py = this.player1FrameY - padding; py < this.player1FrameY + buttonSize + padding; py++) {
+      for (let px = this.player1FrameX - padding; px < this.player1FrameX + buttonSize + padding; px++) {
+        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+          if (px !== midX && py !== 0 && py !== this.height - 1) {
+            this.display.setPixel(px, py, false);
+          }
+        }
+      }
+    }
+  }
+  
+  /**
+   * Draw Player 1 frame with "1P" text (non-blinking frame)
+   */
+  drawPlayer1Frame() {
+    const midX = Math.floor(this.width / 2);
+    const buttonSize = 20;
+    
+    // Clear area before drawing
+    this.clearPlayer1FrameArea();
+    
+    const buttonX = this.player1FrameX;
+    const buttonY = this.player1FrameY;
+    
+    // Draw non-blinking frame (always visible)
+    // Top and bottom borders
+    for (let x = buttonX; x < buttonX + buttonSize; x++) {
+      if (x >= 0 && x < this.width) {
+        // Top
+        if (buttonY >= 0 && buttonY < this.height) {
+          if (x !== midX && buttonY !== 0 && buttonY !== this.height - 1) {
+            this.display.setPixel(x, buttonY, true);
+          }
+        }
+        // Bottom
+        if (buttonY + buttonSize - 1 >= 0 && buttonY + buttonSize - 1 < this.height) {
+          if (x !== midX && buttonY + buttonSize - 1 !== 0 && buttonY + buttonSize - 1 !== this.height - 1) {
+            this.display.setPixel(x, buttonY + buttonSize - 1, true);
+          }
+        }
+      }
+    }
+    
+    // Left and right borders
+    for (let y = buttonY; y < buttonY + buttonSize; y++) {
+      if (y >= 0 && y < this.height) {
+        // Left
+        if (buttonX >= 0 && buttonX < this.width) {
+          if (buttonX !== midX && y !== 0 && y !== this.height - 1) {
+            this.display.setPixel(buttonX, y, true);
+          }
+        }
+        // Right
+        if (buttonX + buttonSize - 1 >= 0 && buttonX + buttonSize - 1 < this.width) {
+          if (buttonX + buttonSize - 1 !== midX && y !== 0 && y !== this.height - 1) {
+            this.display.setPixel(buttonX + buttonSize - 1, y, true);
+          }
+        }
+      }
+    }
+    
+    // Draw "1P" text inside frame (large block letters)
+    // 1 pixel gap from frame edges, 1 pixel closer between 1 and P
+    const letterPatterns = this.getLargeLetterPatterns();
+    const charWidth = 7;
+    const scale = 1.5;
+    const text = '1P';
+    const edgeGap = 1; // 1 pixel gap from frame edges
+    const charSpacing = charWidth * scale - 1; // 1 pixel closer than normal spacing
+    
+    // Calculate total width: 1 char width + spacing + P char width
+    const digit1Width = 5 * scale; // PIXEL_FONT digit 1 is 5 wide
+    const pWidth = 7 * scale; // Letter P is 7 wide
+    const totalTextWidth = digit1Width + charSpacing + pWidth;
+    
+    const textStartX = buttonX + edgeGap;
+    const textStartY = buttonY + edgeGap + 2; // Moved down 2 pixels
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      if (char === ' ') continue;
+      
+      let pattern;
+      let charX;
+      let charY;
+      if (char === '1') {
+        // Use PIXEL_FONT for digit 1
+        pattern = PIXEL_FONT[1];
+        // Draw using 5x7 pattern
+        charX = textStartX;
+        charY = textStartY;
+        for (let row = 0; row < 7; row++) {
+          for (let col = 0; col < 5; col++) {
+            if (pattern[row] && pattern[row][col] === 1) {
+              for (let sy = 0; sy < scale; sy++) {
+                for (let sx = 0; sx < scale; sx++) {
+                  const px = Math.floor(charX + col * scale + sx);
+                  const py = Math.floor(charY + row * scale + sy);
+                  if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+                    if (px !== midX && py !== 0 && py !== this.height - 1) {
+                      this.display.setPixel(px, py, true);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else if (char === 'P') {
+        // Use large letter pattern for P
+        pattern = letterPatterns['P'];
+        // Position P 1 pixel closer to 1 (after digit1Width + reduced spacing)
+        charX = textStartX + digit1Width + (charSpacing - charWidth * scale + 1);
+        const charY = textStartY;
+        for (let row = 0; row < 9; row++) {
+          for (let col = 0; col < 7; col++) {
+            if (pattern[row] && pattern[row][col] === 1) {
+              for (let sy = 0; sy < scale; sy++) {
+                for (let sx = 0; sx < scale; sx++) {
+                  const px = Math.floor(charX + col * scale + sx);
+                  const py = Math.floor(charY + row * scale + sy);
+                  if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+                    if (px !== midX && py !== 0 && py !== this.height - 1) {
+                      this.display.setPixel(px, py, true);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  /**
    * Draw VCR Play icon (triangle) for start button (20x20)
    */
   drawStartArrow() {
@@ -694,10 +895,9 @@ class Pong {
     const centerY = Math.floor(this.height / 2);
     const buttonSize = 20;
     
-    // Center on left side of screen
-    const leftSideCenterX = Math.floor(midX / 2);
-    const buttonX = leftSideCenterX - Math.floor(buttonSize / 2);
-    const buttonY = centerY - Math.floor(buttonSize / 2);
+    // Use calculated position from calculateMenuFramePositions
+    const buttonX = this.startButtonFrameX;
+    const buttonY = this.startButtonFrameY;
     
     // Clear button area before drawing
     this.clearStartArrowArea();
@@ -953,11 +1153,202 @@ class Pong {
   }
   
   /**
+   * Clear Player 2 frame area (including triangles outside frame)
+   */
+  clearPlayer2FrameArea() {
+    const midX = Math.floor(this.width / 2);
+    const buttonSize = 20;
+    const padding = 5;
+    const triangleOffset = 3; // Triangles are outside frame by this amount
+    const triangleHeight = 6; // Height of triangles (2x larger)
+    
+    // Clear frame area plus triangles outside
+    const clearTop = this.player2FrameY - padding - triangleOffset - triangleHeight;
+    const clearBottom = this.player2FrameY + buttonSize + padding + triangleOffset + triangleHeight;
+    const clearLeft = this.player2FrameX - padding - 6; // Extra for triangle width (2x larger)
+    const clearRight = this.player2FrameX + buttonSize + padding + 6;
+    
+    for (let py = clearTop; py < clearBottom; py++) {
+      for (let px = clearLeft; px < clearRight; px++) {
+        if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+          if (px !== midX && py !== 0 && py !== this.height - 1) {
+            this.display.setPixel(px, py, false);
+          }
+        }
+      }
+    }
+  }
+  
+  /**
+   * Draw triangle with long side parallel to edge, pointing to right angle
+   * FLIPPED: For up: long horizontal side at bottom, point at top (flipped)
+   * FLIPPED: For down: long horizontal side at top, point at bottom (flipped)
+   * 2x larger than before
+   */
+  drawSmallTriangle(centerX, centerY, direction, filled, midX) {
+    const longSideLength = 10; // 2x larger: was 5, now 10
+    const height = 6; // 2x larger: was 3, now 6
+    
+    if (direction === 'up') {
+      // Up triangle FLIPPED: long horizontal side at bottom, point at top (right angle)
+      // Draw from bottom (long side) to top (point)
+      for (let row = 0; row < height; row++) {
+        const width = longSideLength - (height - 1 - row) * 2; // Increases from top to bottom
+        if (width > 0) {
+          const startX = centerX - Math.floor(width / 2);
+          for (let col = 0; col < width; col++) {
+            const px = startX + col;
+            const py = centerY - height + row; // Start from top (point)
+            if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+              if (px !== midX && py !== 0 && py !== this.height - 1) {
+                // If filled, draw all pixels. If outlined, only draw border pixels
+                const isBorder = row === 0 || row === height - 1 || col === 0 || col === width - 1;
+                if (filled || isBorder) {
+                  this.display.setPixel(px, py, true);
+                }
+              }
+            }
+          }
+        }
+      }
+    } else {
+      // Down triangle FLIPPED: long horizontal side at top, point at bottom (right angle)
+      // Draw from top (long side) to bottom (point)
+      for (let row = 0; row < height; row++) {
+        const width = longSideLength - row * 2; // Decreases from top to bottom
+        if (width > 0) {
+          const startX = centerX - Math.floor(width / 2);
+          for (let col = 0; col < width; col++) {
+            const px = startX + col;
+            const py = centerY + row; // Start from top (long side)
+            if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+              if (px !== midX && py !== 0 && py !== this.height - 1) {
+                // If filled, draw all pixels. If outlined, only draw border pixels
+                const isBorder = row === 0 || row === height - 1 || col === 0 || col === width - 1;
+                if (filled || isBorder) {
+                  this.display.setPixel(px, py, true);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  /**
+   * Draw Player 2 frame with difficulty selector (blinking frame, up/down arrows, number)
+   */
+  drawPlayer2Frame() {
+    const midX = Math.floor(this.width / 2);
+    const buttonSize = 20;
+    
+    // Clear area before drawing (including triangles outside)
+    this.clearPlayer2FrameArea();
+    
+    const buttonX = this.player2FrameX;
+    const buttonY = this.player2FrameY;
+    
+    // Draw blinking frame with reduced blink rate (25% of original, on 70% of time)
+    const currentTime = performance.now();
+    const blinkSpeed = 0.0025; // 25% of original 0.01
+    const cycle = (currentTime * blinkSpeed) % 1.0;
+    const shouldBlink = cycle < 0.7; // On 70% of the time
+    
+    // Always clear frame area first
+    this.clearButtonFrame(buttonX, buttonY, buttonSize);
+    
+    if (shouldBlink) {
+      // Draw frame (1 pixel border)
+      // Top and bottom borders
+      for (let x = buttonX; x < buttonX + buttonSize; x++) {
+        if (x >= 0 && x < this.width) {
+          // Top
+          if (buttonY >= 0 && buttonY < this.height) {
+            if (x !== midX && buttonY !== 0 && buttonY !== this.height - 1) {
+              this.display.setPixel(x, buttonY, true);
+            }
+          }
+          // Bottom
+          if (buttonY + buttonSize - 1 >= 0 && buttonY + buttonSize - 1 < this.height) {
+            if (x !== midX && buttonY + buttonSize - 1 !== 0 && buttonY + buttonSize - 1 !== this.height - 1) {
+              this.display.setPixel(x, buttonY + buttonSize - 1, true);
+            }
+          }
+        }
+      }
+      
+      // Left and right borders
+      for (let y = buttonY; y < buttonY + buttonSize; y++) {
+        if (y >= 0 && y < this.height) {
+          // Left
+          if (buttonX >= 0 && buttonX < this.width) {
+            if (buttonX !== midX && y !== 0 && y !== this.height - 1) {
+              this.display.setPixel(buttonX, y, true);
+            }
+          }
+          // Right
+          if (buttonX + buttonSize - 1 >= 0 && buttonX + buttonSize - 1 < this.width) {
+            if (buttonX + buttonSize - 1 !== midX && y !== 0 && y !== this.height - 1) {
+              this.display.setPixel(buttonX + buttonSize - 1, y, true);
+            }
+          }
+        }
+      }
+    }
+    
+    // Draw up/down arrow triangles OUTSIDE the frame (on the outside edges)
+    // Triangles are now 2x larger (height 6), so adjust offset
+    const centerX = buttonX + Math.floor(buttonSize / 2);
+    const triangleOffset = 3; // Distance outside frame (adjusted for larger triangles)
+    const upTriangleY = buttonY - triangleOffset - 3; // Above top edge (center of triangle)
+    const downTriangleY = buttonY + buttonSize + triangleOffset + 3; // Below bottom edge (center of triangle)
+    
+    // Reversed order: up arrow increases (1->2->3), down arrow decreases (3->2->1)
+    // Up triangle: solid if can increase (level < 3), outlined if can't (level === 3)
+    const upFilled = this.aiDifficultyLevel < 3;
+    this.drawSmallTriangle(centerX, upTriangleY, 'up', upFilled, midX);
+    
+    // Down triangle: solid if can decrease (level > 1), outlined if can't (level === 1)
+    const downFilled = this.aiDifficultyLevel > 1;
+    this.drawSmallTriangle(centerX, downTriangleY, 'down', downFilled, midX);
+    
+    // Draw selected number (1, 2, or 3) as large bold numeral in center
+    const digit = this.aiDifficultyLevel;
+    const digitPattern = PIXEL_FONT[digit];
+    const digitWidth = 5;
+    const digitHeight = 7;
+    const scale = 2.0; // Large scale for visibility
+    const digitX = buttonX + Math.floor((buttonSize - digitWidth * scale) / 2);
+    const digitY = buttonY + Math.floor((buttonSize - digitHeight * scale) / 2);
+    
+    for (let row = 0; row < digitHeight; row++) {
+      for (let col = 0; col < digitWidth; col++) {
+        if (digitPattern[row] && digitPattern[row][col] === 1) {
+          for (let sy = 0; sy < scale; sy++) {
+            for (let sx = 0; sx < scale; sx++) {
+              const px = Math.floor(digitX + col * scale + sx);
+              const py = Math.floor(digitY + row * scale + sy);
+              if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+                if (px !== midX && py !== 0 && py !== this.height - 1) {
+                  this.display.setPixel(px, py, true);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  /**
    * Draw menu state
    */
   drawMenu() {
     this.drawBouncingPongTitle();
+    this.drawPlayer1Frame();
     this.drawStartArrow();
+    this.drawPlayer2Frame();
   }
   
   /**
@@ -1072,14 +1463,84 @@ class Pong {
   }
   
   /**
+   * Clear previous game over message area
+   */
+  clearPreviousGameOverMessage() {
+    // Skip if positions haven't been initialized yet or game over hasn't started
+    if (this.gameOverStartTime === 0) {
+      return;
+    }
+    
+    // Skip if positions are uninitialized (both are 0 and not yet set)
+    if (typeof this.prevGameOverStartX !== 'number' || typeof this.prevGameOverStartY !== 'number' ||
+        (this.prevGameOverStartX === 0 && this.prevGameOverStartY === 0 && this.gameOverStartTime > 0)) {
+      // Check if this is the very first frame (allow first draw without clearing)
+      const currentTime = performance.now();
+      const elapsed = currentTime - this.gameOverStartTime;
+      if (elapsed < 33) { // Skip first frame to allow initial draw
+        return;
+      }
+    }
+    
+    const centerX = Math.floor(this.width / 2);
+    const centerY = Math.floor(this.height / 2);
+    const textScale = 1.26; // 10% smaller: 1.4 * 0.9 = 1.26
+    // Calculate actual message width based on scaled character width
+    // Each character is 7 pixels wide (large letter pattern) * scale, plus spacing
+    const charWidth = 7 * textScale; // Scaled character width
+    const charSpacing = 2 * textScale; // Scaled spacing
+    const maxMessageLength = 7; // "WINNER!" or "YOU LOSE"
+    const messageWidth = Math.ceil((charWidth + charSpacing) * maxMessageLength - charSpacing); // Total width
+    const messageHeight = Math.ceil(9 * textScale); // Height of scaled text
+    const bounceAmount = 3;
+    
+    // Clear area large enough to cover full bounce range (previous position + bounce amount)
+    // Ensure we clamp coordinates to valid bounds to prevent clearing issues, especially on left edge
+    const clearWidth = Math.ceil(messageWidth) + 20; // Extra padding to ensure complete clearing
+    const clearHeight = messageHeight + (bounceAmount * 2) + 10; // Extra padding
+    const clearXStart = Math.max(0, Math.floor(this.prevGameOverStartX - 10)); // Extra left padding
+    const clearYStart = Math.max(0, Math.floor(this.prevGameOverStartY - bounceAmount - 5));
+    const clearXEnd = Math.min(this.width, clearXStart + clearWidth);
+    const clearYEnd = Math.min(this.height, clearYStart + clearHeight);
+    const midX = Math.floor(this.width / 2);
+    const buttonPadding = 30;
+    
+    // Only clear if we have valid coordinates
+    if (clearXStart < clearXEnd && clearYStart < clearYEnd) {
+      for (let py = clearYStart; py < clearYEnd; py++) {
+        for (let px = clearXStart; px < clearXEnd; px++) {
+          // Double-check bounds (defense in depth)
+          if (px >= 0 && px < this.width && py >= 0 && py < this.height) {
+            // Don't clear button areas (right side for restart button)
+            const isInButtonArea = px > this.width - buttonPadding && 
+                                 (py > centerY - 25 && py < centerY + 25);
+            // Don't clear court elements
+            if (px !== midX && py !== 0 && py !== this.height - 1 && !isInButtonArea) {
+              this.display.setPixel(px, py, false);
+            }
+          }
+        }
+      }
+    }
+    
+    // Redraw middle line if it was cleared (only if we have valid clear coordinates)
+    if (clearYStart < centerY + 10 && clearYEnd > centerY - 10) {
+      for (let py = Math.max(clearYStart, centerY - 10); py < Math.min(clearYEnd, centerY + 10); py++) {
+        if (py >= 0 && py < this.height && py % 2 === 0) {
+          this.display.setPixel(midX, py, true);
+        } else if (py >= 0 && py < this.height && py % 2 === 1) {
+          this.display.setPixel(midX, py, false);
+        }
+      }
+    }
+  }
+  
+  /**
    * Draw large pixel text for WINNER or YOU LOSE (simple bouncing text)
    */
   drawGameOverMessage() {
     const currentTime = performance.now();
     const elapsed = currentTime - this.gameOverStartTime;
-    
-    // Always clear message area first (but keep button areas clear)
-    this.clearGameOverArea();
     
     const isWinner = this.winner === 'left';
     const message = isWinner ? 'WINNER!' : 'YOU LOSE';
@@ -1098,6 +1559,9 @@ class Pong {
     const startY = baseY + bounceY;
     const startX = centerX - Math.floor(messageWidth / 2);
     
+    // Clear previous message position before drawing new one
+    this.clearPreviousGameOverMessage();
+    
     const letterPatterns = this.getLargeLetterPatterns();
     
     // Draw main message text with bouncing
@@ -1112,7 +1576,7 @@ class Pong {
       if (pattern) {
         const charX = startX + (charIndex * charWidth);
         const charY = startY;
-        const textScale = 1.4;
+        const textScale = 1.26; // 10% smaller: 1.4 * 0.9 = 1.26
         
         for (let row = 0; row < 9; row++) {
           for (let col = 0; col < 7; col++) {
@@ -1139,6 +1603,10 @@ class Pong {
       }
       charIndex++;
     }
+    
+    // Store current position for next frame cleanup
+    this.prevGameOverStartX = startX;
+    this.prevGameOverStartY = startY;
   }
   
   /**
@@ -1348,9 +1816,12 @@ class Pong {
           pixelX < this.restartButtonBounds.x + this.restartButtonBounds.width &&
           pixelY >= this.restartButtonBounds.y && 
           pixelY < this.restartButtonBounds.y + this.restartButtonBounds.height) {
-        // Go back to menu when restarting
+        // Go back to menu when restarting - ensure complete cleanup
         this.clearGameOverArea();
         this.clearCountdownArea();
+        this.clearPreviousGameOverMessage();
+        // Clear paddles and ball from final position
+        this.clearPreviousFrame();
         this.goToMenu();
         return true;
       }
@@ -1359,11 +1830,13 @@ class Pong {
   }
   
   /**
-   * Clear menu elements (PONG title and start arrow)
+   * Clear menu elements (PONG title and all frames)
    */
   clearMenuArea() {
     this.clearPongTitleArea();
+    this.clearPlayer1FrameArea();
     this.clearStartArrowArea();
+    this.clearPlayer2FrameArea();
   }
   
   /**
@@ -1379,12 +1852,45 @@ class Pong {
     this.gameState = 'MENU';
     this.winner = null;
     this.gameOverStartTime = 0;
+    this.prevGameOverStartX = 0;
+    this.prevGameOverStartY = 0;
     
     // Reset PONG title position and velocity
     this.pongTitleX = Math.floor(this.width / 2);
     this.pongTitleY = Math.floor(this.height / 2);
     this.pongTitleVx = (Math.random() > 0.5 ? 1 : -1) * 0.5;
     this.pongTitleVy = (Math.random() > 0.5 ? 1 : -1) * 0.5;
+  }
+  
+  /**
+   * Calculate AI skill from difficulty level and speed multiplier
+   */
+  calculateAISkill() {
+    let baseSkill;
+    if (this.aiDifficultyLevel === 1) {
+      baseSkill = 0.25;
+    } else if (this.aiDifficultyLevel === 2) {
+      baseSkill = 0.5;
+    } else { // Level 3
+      baseSkill = 0.75;
+      // For level 3, scale from 0.75 to 0.85 as speed increases
+      const maxSpeedMultiplier = 2.0;
+      const maxIncrease = 0.1; // 0.85 - 0.75
+      const scaleFactor = maxIncrease / (maxSpeedMultiplier - 1.0);
+      const speedIncrease = Math.min(this.currentSpeedMultiplier - 1.0, maxSpeedMultiplier - 1.0);
+      baseSkill = 0.75 + speedIncrease * scaleFactor;
+      // Cap at 0.85 maximum
+      baseSkill = Math.min(baseSkill, 0.85);
+    }
+    return baseSkill;
+  }
+  
+  /**
+   * Update AI controller skill based on current difficulty and speed
+   */
+  updateAIControllerSkill() {
+    const skill = this.calculateAISkill();
+    this.rightController.skill = skill;
   }
   
   /**
@@ -1401,6 +1907,10 @@ class Pong {
     this.score.left = 0;
     this.score.right = 0;
     
+    // Reset volley count and speed multiplier
+    this.volleyCount = 0;
+    this.currentSpeedMultiplier = 1.0;
+    
     // Reset paddles
     this.leftPaddle.y = Math.floor(this.height / 2 - this.PADDLE_HEIGHT / 2);
     this.rightPaddle.y = Math.floor(this.height / 2 - this.PADDLE_HEIGHT / 2);
@@ -1413,6 +1923,9 @@ class Pong {
     
     // Update scores display
     this.updateScores();
+    
+    // Update AI controller with selected difficulty
+    this.updateAIControllerSkill();
     
     // Start countdown
     this.gameState = 'COUNTDOWN';
@@ -1434,17 +1947,42 @@ class Pong {
    * Check if game should end
    */
   checkGameEnd() {
+    const centerX = Math.floor(this.width / 2);
+    const centerY = Math.floor(this.height / 2);
+    const messageWidth = 70; // Approximate width
+    
     if (this.score.left >= 5) {
+      // Clear screen before transitioning to win/lose screen
+      this.clearPreviousFrame();
+      this.clearCountdownArea();
+      this.clearPauseArea();
+      this.clearGameOverArea();
+      
       this.winner = 'left';
       this.gameState = 'GAME_OVER';
       this.gameOverStartTime = performance.now();
+      // Initialize previous position for cleanup
+      this.prevGameOverStartX = centerX - Math.floor(messageWidth / 2);
+      this.prevGameOverStartY = centerY - 28; // Initial Y position
       // Stop ball
       this.ball.vx = 0;
       this.ball.vy = 0;
     } else if (this.score.right >= 5) {
+      // Clear screen before transitioning to win/lose screen
+      this.clearPreviousFrame();
+      this.clearCountdownArea();
+      this.clearPauseArea();
+      this.clearGameOverArea();
+      
       this.winner = 'right';
       this.gameState = 'GAME_OVER';
       this.gameOverStartTime = performance.now();
+      // Initialize previous position for cleanup
+      const centerX = Math.floor(this.width / 2);
+      const centerY = Math.floor(this.height / 2);
+      const messageWidth = 70; // Approximate width
+      this.prevGameOverStartX = centerX - Math.floor(messageWidth / 2);
+      this.prevGameOverStartY = centerY - 28; // Initial Y position
       // Stop ball
       this.ball.vx = 0;
       this.ball.vy = 0;
@@ -1625,7 +2163,7 @@ class Pong {
       this.checkButtonClick(pixelX, pixelY);
     });
     
-    // Keyboard handler for Enter key
+    // Keyboard handler for Enter key and arrow keys
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.keyCode === 13) {
         e.preventDefault();
@@ -1633,23 +2171,66 @@ class Pong {
         if (this.gameState === 'MENU') {
           this.startNewGame();
         } else if (this.gameState === 'GAME_OVER') {
-          // Go back to menu when restarting
+          // Go back to menu when restarting - ensure complete cleanup
           this.clearGameOverArea();
           this.clearCountdownArea();
+          this.clearPreviousGameOverMessage();
+          // Clear paddles and ball from final position
+          this.clearPreviousFrame();
           this.goToMenu();
         }
-      } else if ((e.key === 'w' || e.key === 'W') && this.gameState === 'MENU') {
+      } else if (this.gameState === 'MENU' && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'w' || e.key === 'W' || e.key === 's' || e.key === 'S')) {
+        // Handle arrow keys or WASD in menu state to change difficulty
+        // Reversed order: up increases (1->2->3), down decreases (3->2->1)
+        // W or ArrowUp = up, S or ArrowDown = down
+        e.preventDefault();
+        const isUp = e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W';
+        const isDown = e.key === 'ArrowDown' || e.key === 's' || e.key === 'S';
+        if (isUp && this.aiDifficultyLevel < 3) {
+          this.aiDifficultyLevel++;
+        } else if (isDown && this.aiDifficultyLevel > 1) {
+          this.aiDifficultyLevel--;
+        }
+        // Update AI controller skill when difficulty changes
+        this.updateAIControllerSkill();
+      } else if ((e.key === 'o' || e.key === 'O') && this.gameState === 'MENU') {
         // Debug: show win screen
         e.preventDefault();
+        // Clear screen before transitioning to win screen
+        this.clearMenuArea();
+        this.clearPreviousFrame();
+        this.clearCountdownArea();
+        this.clearPauseArea();
+        this.clearGameOverArea();
+        
+        const centerX = Math.floor(this.width / 2);
+        const centerY = Math.floor(this.height / 2);
+        const messageWidth = 70; // Approximate width
         this.gameState = 'GAME_OVER';
         this.winner = 'left';
         this.gameOverStartTime = performance.now();
+        // Initialize previous position for cleanup
+        this.prevGameOverStartX = centerX - Math.floor(messageWidth / 2);
+        this.prevGameOverStartY = centerY - 28; // Initial Y position
       } else if ((e.key === 'l' || e.key === 'L') && this.gameState === 'MENU') {
         // Debug: show lose screen
         e.preventDefault();
+        // Clear screen before transitioning to lose screen
+        this.clearMenuArea();
+        this.clearPreviousFrame();
+        this.clearCountdownArea();
+        this.clearPauseArea();
+        this.clearGameOverArea();
+        
+        const centerX = Math.floor(this.width / 2);
+        const centerY = Math.floor(this.height / 2);
+        const messageWidth = 70; // Approximate width
         this.gameState = 'GAME_OVER';
         this.winner = 'right';
         this.gameOverStartTime = performance.now();
+        // Initialize previous position for cleanup
+        this.prevGameOverStartX = centerX - Math.floor(messageWidth / 2);
+        this.prevGameOverStartY = centerY - 28; // Initial Y position
       }
     });
   }
@@ -1760,11 +2341,15 @@ class Pong {
     // AI controllers directly modify paddle.y in their update() method
     // Human controllers return direction ('up'/'down'/'null')
     if (controller instanceof AIController) {
+      // Update AI skill dynamically (especially for level 3 with speed scaling)
+      this.updateAIControllerSkill();
+      
       // AI controller handles movement internally
       controller.update(paddle, this.ball, {
         score: this.score,
         width: this.width,
-        height: this.height
+        height: this.height,
+        speedMultiplier: this.currentSpeedMultiplier
       });
     } else {
       // Human controller returns direction
@@ -1804,13 +2389,27 @@ class Pong {
         // Calculate hit position on paddle (0 to 1)
         const hitPos = (ballY - paddle.y) / paddle.height;
         
-        // Reverse x velocity
-        this.ball.vx = -this.ball.vx;
+        // Increment volley count (ball hit a paddle)
+        this.volleyCount++;
         
-        // Adjust y velocity based on hit position
+        // Calculate speed multiplier based on volley count
+        // Each volley increases speed by 0.25% (much more gradual, capped at reasonable maximum)
+        const speedIncreasePerVolley = 0.0025;
+        const maxSpeedMultiplier = 2.0; // Cap at 2x speed
+        const speedMultiplier = Math.min(1.0 + (this.volleyCount * speedIncreasePerVolley), maxSpeedMultiplier);
+        
+        // Store current speed multiplier for AI skill scaling
+        this.currentSpeedMultiplier = speedMultiplier;
+        
+        // Reverse x velocity and apply speed multiplier
+        this.ball.vx = -this.ball.vx * speedMultiplier;
+        
+        // Adjust y velocity based on hit position, maintaining speed multiplier
         // Hit near top = upward angle, hit near bottom = downward angle
         const angle = (hitPos - 0.5) * 2; // -1 to 1
-        this.ball.vy = angle * this.BALL_SPEED * 0.8;
+        // Maintain proportional speed increase
+        const baseVyMagnitude = Math.abs(angle * this.BALL_SPEED * 0.8);
+        this.ball.vy = (angle >= 0 ? 1 : -1) * baseVyMagnitude * speedMultiplier;
         
         // Ensure minimum speed
         if (Math.abs(this.ball.vx) < 0.5) {
@@ -1850,11 +2449,15 @@ class Pong {
       // Right player scores
       this.score.right++;
       this.updateScores();
+      this.volleyCount = 0; // Reset volley count on score
+      this.currentSpeedMultiplier = 1.0; // Reset speed multiplier
       this.resetBall();
     } else if (this.ball.x >= this.width) {
       // Left player scores
       this.score.left++;
       this.updateScores();
+      this.volleyCount = 0; // Reset volley count on score
+      this.currentSpeedMultiplier = 1.0; // Reset speed multiplier
       this.resetBall();
     }
   }
@@ -1865,6 +2468,10 @@ class Pong {
   resetBall() {
     this.ball.x = Math.floor(this.width / 2);
     this.ball.y = Math.floor(this.height / 2);
+    
+    // Reset volley count and speed multiplier when ball is reset
+    this.volleyCount = 0;
+    this.currentSpeedMultiplier = 1.0;
     
     // Randomize speed: ±5% from base BALL_SPEED
     const speedVariation = 1.0 + (Math.random() - 0.5) * 0.1; // ±5%
@@ -1909,7 +2516,8 @@ class Pong {
       return;
     } else if (this.gameState === 'GAME_OVER') {
       // Draw game over screen
-      this.clearPreviousFrame();
+      // Don't clear previous frame here - drawGameOverMessage handles its own cleanup
+      // Draw game over (message and restart button) - this will animate
       this.drawGameOver();
       // Still draw paddles and ball in final position
       this.drawCurrentFrame();
