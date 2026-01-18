@@ -63,6 +63,8 @@ class AIController extends PlayerController {
     this.directionChangeTime = 0;
     this.reactionDelay = 0;
     this.reacting = false;
+    this.lastDegaussStartTime = 0;
+    this.shakenOffActive = false;
     
     // Skill-based parameters
     this.maxReactionTime = 500; // ms - increased for slower reactions
@@ -73,6 +75,47 @@ class AIController extends PlayerController {
   }
   
   update(paddle, ball, gameState) {
+    // Degauss "shaken off" (levels 1 & 2): clear when degauss not running
+    if (gameState.degaussStartTime === 0) {
+      this.lastDegaussStartTime = 0;
+    }
+
+    if (gameState.degaussStartTime > 0 && gameState.degaussDuration > 0) {
+      const elapsed = gameState.currentTime - gameState.degaussStartTime;
+      const pct = elapsed / gameState.degaussDuration;
+
+      if (gameState.degaussStartTime !== this.lastDegaussStartTime) {
+        this.lastDegaussStartTime = gameState.degaussStartTime;
+        if (gameState.aiDifficultyLevel === 1) {
+          this.shakenOffActive = Math.random() < 0.75;
+        } else if (gameState.aiDifficultyLevel === 2) {
+          this.shakenOffActive = Math.random() < 0.5;
+        } else {
+          this.shakenOffActive = false;
+        }
+      }
+
+      if (this.shakenOffActive) {
+        if (pct >= 0.8) {
+          this.shakenOffActive = false;
+          this.reacting = false;
+          this.lastDirection = ball.vy > 0 ? 1 : (ball.vy < 0 ? -1 : 0);
+          // fall through to normal AI
+        } else {
+          const aiMaxSpeed = paddle.speed * 0.71;
+          if (pct < 0.4) {
+            const targetVelocity = this.currentVelocity >= 0 ? -aiMaxSpeed : aiMaxSpeed;
+            this.currentVelocity += (targetVelocity - this.currentVelocity) * this.smoothingFactor;
+          } else {
+            this.currentVelocity += (0 - this.currentVelocity) * (this.smoothingFactor * 0.5);
+          }
+          this.currentVelocity = Math.max(-aiMaxSpeed, Math.min(aiMaxSpeed, this.currentVelocity));
+          paddle.y += this.currentVelocity;
+          return this.getDirectionFromVelocity();
+        }
+      }
+    }
+
     // Update target - track ball's vertical position
     this.targetY = ball.y;
     
@@ -2106,7 +2149,11 @@ class Pong {
         score: this.score,
         width: this.width,
         height: this.height,
-        speedMultiplier: this.currentSpeedMultiplier
+        speedMultiplier: this.currentSpeedMultiplier,
+        degaussStartTime: this.display.degaussStartTime,
+        degaussDuration: this.display.degaussDuration,
+        currentTime: performance.now(),
+        aiDifficultyLevel: this.aiDifficultyLevel
       });
     } else {
       // Human controller returns direction
