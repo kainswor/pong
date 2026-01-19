@@ -1,5 +1,5 @@
 /**
- * Game and display constants. Flat list for use by pong.js and pixel-display.js.
+ * Game and UI constants. Flat list for use by pong.js.
  */
 
 // Game
@@ -59,18 +59,3 @@ export const PAUSE_BAR_SPACING = 2;
 // Restart arrow
 export const RESTART_ARROW_RADIUS = 6;
 export const RESTART_ARROW_SPEED = 0.1;
-
-// CRT (pixel-display)
-export const CRT_ON_COLOR = '#39ff14';
-export const CRT_FADE_IN_MS = 50;
-export const CRT_FADE_OUT_MS = 200;
-
-// Degauss
-export const DEGAUSS_COOLDOWN_MS = 30000;
-export const DEGAUSS_COOLDOWN_MIN_MS = 1000;
-export const DEGAUSS_DURATION_BASE_MS = 2000;
-export const DEGAUSS_AMP_PX = 12;
-export const DEGAUSS_OVERLAY_ALPHA = 0.35;
-export const DEGAUSS_DECAY_ALPHA = 2.5;
-export const DEGAUSS_FREQ_HZ = 50;
-export const DEGAUSS_WAVE_K = 2.5;

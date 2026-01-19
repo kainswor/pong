@@ -31,10 +31,10 @@
 <body>
   <canvas id="display"></canvas>
   <script>
-const __DEBUG_SCREENS_ENABLED__ = false;
+const __DEBUG_SCREENS_ENABLED__ = true;
 
 /**
- * Game and display constants. Flat list for use by pong.js and pixel-display.js.
+ * Game and UI constants. Flat list for use by pong.js.
  */
 
 // Game
@@ -95,21 +95,6 @@ const PAUSE_BAR_SPACING = 2;
 const RESTART_ARROW_RADIUS = 6;
 const RESTART_ARROW_SPEED = 0.1;
 
-// CRT (pixel-display)
-const CRT_ON_COLOR = '#39ff14';
-const CRT_FADE_IN_MS = 50;
-const CRT_FADE_OUT_MS = 200;
-
-// Degauss
-const DEGAUSS_COOLDOWN_MS = 30000;
-const DEGAUSS_COOLDOWN_MIN_MS = 1000;
-const DEGAUSS_DURATION_BASE_MS = 2000;
-const DEGAUSS_AMP_PX = 12;
-const DEGAUSS_OVERLAY_ALPHA = 0.35;
-const DEGAUSS_DECAY_ALPHA = 2.5;
-const DEGAUSS_FREQ_HZ = 50;
-const DEGAUSS_WAVE_K = 2.5;
-
 /**
  * Key mappings and keyboard config for KeyboardController and main key handler.
  */
@@ -135,6 +120,26 @@ const DOWN_KEYS_LEFT_2P = ['s', 'S'];
 /** 2P right: arrows only */
 const UP_KEYS_RIGHT_2P = ['ArrowUp'];
 const DOWN_KEYS_RIGHT_2P = ['ArrowDown'];
+
+/**
+ * Engine constants for PixelDisplay: CRT and degauss tuning.
+ * Used only by engine/pixel-display.js.
+ */
+
+// CRT
+const CRT_ON_COLOR = '#39ff14';
+const CRT_FADE_IN_MS = 50;
+const CRT_FADE_OUT_MS = 200;
+
+// Degauss
+const DEGAUSS_COOLDOWN_MS = 30000;
+const DEGAUSS_COOLDOWN_MIN_MS = 1000;
+const DEGAUSS_DURATION_BASE_MS = 2000;
+const DEGAUSS_AMP_PX = 12;
+const DEGAUSS_OVERLAY_ALPHA = 0.35;
+const DEGAUSS_DECAY_ALPHA = 2.5;
+const DEGAUSS_FREQ_HZ = 50;
+const DEGAUSS_WAVE_K = 2.5;
 
 /**
  * PixelDisplay - A retro CRT-style pixel display renderer

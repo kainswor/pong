@@ -1,4 +1,4 @@
-import { PixelDisplay } from './pixel-display.js';
+import { PixelDisplay } from './engine/pixel-display.js';
 import { PIXEL_FONT, LARGE_LETTER_PATTERNS } from './sprites.js';
 import {
   GOALS_TO_WIN, COUNTDOWN_MS, BUTTON_SIZE, BUTTON_PADDING, BUTTON_PADDING_V,

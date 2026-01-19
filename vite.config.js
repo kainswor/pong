@@ -54,15 +54,15 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    // Generate source maps for debugging production issues
-    sourcemap: true,
-    // Optimize chunk size
+    sourcemap: process.env.BUILD_SOURCEMAP !== '0',
+    minify: 'esbuild',
+    cssMinify: true,
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         // Manual chunking strategy for better caching
         manualChunks: {
-          'vendor': ['./src/pixel-display.js'],
+          'vendor': ['./src/engine/pixel-display.js'],
           'game': ['./src/pong.js', './src/sprites.js']
         }
       }

@@ -1,7 +1,7 @@
 /**
  * Test utilities for PixelDisplay: mock canvas and display factory.
  */
-import { PixelDisplay } from '../src/pixel-display.js';
+import { PixelDisplay } from '../src/engine/pixel-display.js';
 
 /**
  * Create a mock canvas suitable for headless Node.

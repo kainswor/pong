@@ -10,6 +10,8 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import * as esbuild from 'esbuild';
+import { minify } from 'html-minifier-terser';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,6 +35,7 @@ function logStep(step, message) {
   log(` ${message}`, 'dim');
 }
 
+(async () => {
 try {
   log('\n🚀 Building GitHub Pages inline HTML...\n', 'green');
 
@@ -40,7 +43,8 @@ try {
   logStep(1, 'Reading source files...');
   const constantsJs = readFileSync(join(rootDir, 'src/constants.js'), 'utf-8');
   const inputJs = readFileSync(join(rootDir, 'src/input.js'), 'utf-8');
-  const pixelDisplayJs = readFileSync(join(rootDir, 'src/pixel-display.js'), 'utf-8');
+  const engineConstantsJs = readFileSync(join(rootDir, 'src/engine/constants.js'), 'utf-8');
+  const pixelDisplayJs = readFileSync(join(rootDir, 'src/engine/pixel-display.js'), 'utf-8');
   const spritesJs = readFileSync(join(rootDir, 'src/sprites.js'), 'utf-8');
   const pongJs = readFileSync(join(rootDir, 'src/pong.js'), 'utf-8');
 
@@ -52,19 +56,23 @@ try {
 
   const constantsProcessed = stripExport(constantsJs);
   const inputProcessed = stripExport(inputJs);
+  const engineConstantsProcessed = stripExport(engineConstantsJs);
   const pixelDisplayProcessed = stripImports(stripExport(pixelDisplayJs));
   const spritesProcessed = stripExport(spritesJs);
   const pongProcessed = stripExportPong(stripImports(pongJs));
 
-  // Step 3: Combine JavaScript (constants and input first; pong and pixel-display depend on them)
+  // Step 3: Combine JavaScript (game constants, input, engine constants, engine pixel-display, sprites, pong)
   logStep(3, 'Combining JavaScript into single bundle...');
   const debugScreens = process.env.DISABLE_DEBUG !== '1' && process.env.DISABLE_DEBUG !== 'true';
   const debugPreamble = `const __DEBUG_SCREENS_ENABLED__ = ${debugScreens};\n\n`;
-  const combinedJs = debugPreamble + [constantsProcessed, inputProcessed, pixelDisplayProcessed, spritesProcessed, pongProcessed].join('\n\n');
+  let combinedJs = debugPreamble + [constantsProcessed, inputProcessed, engineConstantsProcessed, pixelDisplayProcessed, spritesProcessed, pongProcessed].join('\n\n');
+  if (process.env.DISABLE_DEBUG === '1') {
+    combinedJs = esbuild.transformSync(combinedJs, { minify: true }).code;
+  }
 
-  // Step 4: Generate HTML
-  logStep(4, 'Generating HTML template...');
-  const html = `<!DOCTYPE html>
+  // Step 4: Generate HTML (and minify when DISABLE_DEBUG=1)
+  logStep(4, process.env.DISABLE_DEBUG === '1' ? 'Generating and minifying HTML template...' : 'Generating HTML template...');
+  let html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -101,6 +109,9 @@ ${combinedJs}
   </script>
 </body>
 </html>`;
+  if (process.env.DISABLE_DEBUG === '1') {
+    html = await minify(html, { minifyJS: false, minifyCSS: true, collapseWhitespace: true, removeComments: true, conservativeCollapse: true });
+  }
 
   // Step 5: Write output file
   logStep(5, 'Writing index.html...');
@@ -110,6 +121,7 @@ ${combinedJs}
   const stats = {
     constants: (constantsProcessed.length / 1024).toFixed(1),
     input: (inputProcessed.length / 1024).toFixed(1),
+    engineConstants: (engineConstantsProcessed.length / 1024).toFixed(1),
     pixelDisplay: (pixelDisplayProcessed.length / 1024).toFixed(1),
     sprites: (spritesProcessed.length / 1024).toFixed(1),
     pong: (pongProcessed.length / 1024).toFixed(1),
@@ -118,13 +130,14 @@ ${combinedJs}
 
   log('\n✓ Build complete!', 'green');
   log(`\n  File sizes:`, 'dim');
-  log(`    constants.js:     ${stats.constants} KB`, 'dim');
-  log(`    input.js:         ${stats.input} KB`, 'dim');
-  log(`    pixel-display.js: ${stats.pixelDisplay} KB`, 'dim');
-  log(`    sprites.js:       ${stats.sprites} KB`, 'dim');
-  log(`    pong.js:          ${stats.pong} KB`, 'dim');
+  log(`    constants.js:        ${stats.constants} KB`, 'dim');
+  log(`    input.js:            ${stats.input} KB`, 'dim');
+  log(`    engine/constants.js: ${stats.engineConstants} KB`, 'dim');
+  log(`    engine/pixel-display.js: ${stats.pixelDisplay} KB`, 'dim');
+  log(`    sprites.js:          ${stats.sprites} KB`, 'dim');
+  log(`    pong.js:             ${stats.pong} KB`, 'dim');
   log(`    ─────────────────────────────`, 'dim');
-  log(`    index.html:       ${stats.total} KB\n`, 'yellow');
+  log(`    index.html:          ${stats.total} KB\n`, 'yellow');
 
   log(`  Output: ${join(rootDir, 'index.html')}\n`, 'dim');
 
@@ -133,3 +146,4 @@ ${combinedJs}
   log(`  ${error.message}\n`, 'dim');
   process.exit(1);
 }
+})();

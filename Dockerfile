@@ -17,7 +17,12 @@ COPY . .
 # Build the application: DISABLE_DEBUG=1 (default) disables debug; build-debug passes DISABLE_DEBUG=0
 ARG DISABLE_DEBUG=1
 ENV DISABLE_DEBUG=${DISABLE_DEBUG}
+RUN npm run build:gh-pages
+
+ENV BUILD_SOURCEMAP=0
 RUN npm run build
+
+RUN find /app/dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' \) -exec gzip -9 -k {} \;
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine
