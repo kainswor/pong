@@ -9,7 +9,10 @@ import {
   GAME_OVER_BASE_Y_OFFSET, GAME_OVER_WINNER_X_OFFSET, GAME_OVER_LOSE_X_OFFSET,
   LABEL_SCALE, LABEL_GLYPH_COLS, LABEL_GAP_W, LABEL_BOUNCE_SPEED, LABEL_BOUNCE_AMOUNT,
   PAUSE_BOUNCE_SPEED, PAUSE_BOUNCE_AMOUNT, PAUSE_BAR_WIDTH, PAUSE_BAR_HEIGHT, PAUSE_BAR_SPACING,
-  RESTART_ARROW_RADIUS, RESTART_ARROW_SPEED, LOGIC_HZ, DT_MS, MAX_FRAME_MS, MAX_UPDATES_PER_FRAME
+  RESTART_ARROW_RADIUS, RESTART_ARROW_SPEED, LOGIC_HZ, DT_MS, MAX_FRAME_MS, MAX_UPDATES_PER_FRAME,
+  SPIN_PADDLE_TRANSFER_LEVEL, SPIN_PADDLE_TRANSFER_2P, SPIN_MAGNUS_FACTOR_LEVEL, SPIN_MAGNUS_FACTOR_2P,
+  SPIN_DAMPING_PER_TICK, SPIN_WALL_RETENTION_LEVEL, SPIN_WALL_RETENTION_2P, SPIN_MAX,
+  LEVEL_SPEED_FACTOR_3
 } from './constants.js';
 import {
   UP_KEYS_1P, DOWN_KEYS_1P, UP_KEYS_LEFT_2P, DOWN_KEYS_LEFT_2P, UP_KEYS_RIGHT_2P, DOWN_KEYS_RIGHT_2P,
@@ -276,7 +279,9 @@ class Pong {
       y: Math.floor(this.height / 2 - this.PADDLE_HEIGHT / 2),
       width: this.PADDLE_WIDTH,
       height: this.PADDLE_HEIGHT,
-      speed: this.PADDLE_SPEED
+      speed: this.PADDLE_SPEED,
+      _prevY: Math.floor(this.height / 2 - this.PADDLE_HEIGHT / 2),
+      vy: 0
     };
     
     this.rightPaddle = {
@@ -284,7 +289,9 @@ class Pong {
       y: Math.floor(this.height / 2 - this.PADDLE_HEIGHT / 2),
       width: this.PADDLE_WIDTH,
       height: this.PADDLE_HEIGHT,
-      speed: this.PADDLE_SPEED
+      speed: this.PADDLE_SPEED,
+      _prevY: Math.floor(this.height / 2 - this.PADDLE_HEIGHT / 2),
+      vy: 0
     };
     
     this.ball = {
@@ -292,6 +299,7 @@ class Pong {
       y: Math.floor(this.height / 2),
       vx: 0,
       vy: 0,
+      spin: 0,
       radius: 1
     };
     
@@ -1085,6 +1093,7 @@ class Pong {
     this.ball.y = Math.floor(this.height / 2);
     this.ball.vx = 0;
     this.ball.vy = 0;
+    this.ball.spin = 0;
     
     // Update scores display
     this.updateScores();
@@ -1156,7 +1165,8 @@ class Pong {
         x: this.ball.x,
         y: this.ball.y,
         vx: this.ball.vx,
-        vy: this.ball.vy
+        vy: this.ball.vy,
+        spin: this.ball.spin
       },
       leftPaddle: {
         y: this.leftPaddle.y
@@ -1184,6 +1194,7 @@ class Pong {
       this.ball.y = this.savedState.ball.y;
       this.ball.vx = this.savedState.ball.vx;
       this.ball.vy = this.savedState.ball.vy;
+      this.ball.spin = this.savedState.ball.spin ?? 0;
       this.leftPaddle.y = this.savedState.leftPaddle.y;
       this.rightPaddle.y = this.savedState.rightPaddle.y;
       this.score.left = this.savedState.score.left;
@@ -1340,9 +1351,36 @@ class Pong {
   }
   
   /**
+   * Return spin config for the current level (1P: aiDifficultyLevel 1–3; 2P: dedicated 2P constants).
+   */
+  getSpinConfig() {
+    const speedFactor = (this.rightPlayerOption !== '2P' && this.aiDifficultyLevel === 3) ? LEVEL_SPEED_FACTOR_3 : 1.0;
+    if (this.rightPlayerOption === '2P') {
+      return {
+        paddleTransfer: SPIN_PADDLE_TRANSFER_2P,
+        magnusFactor: SPIN_MAGNUS_FACTOR_2P,
+        dampingPerTick: SPIN_DAMPING_PER_TICK,
+        wallRetention: SPIN_WALL_RETENTION_2P,
+        maxSpin: SPIN_MAX,
+        speedFactor: 1.0
+      };
+    }
+    const i = this.aiDifficultyLevel - 1; // 0, 1, 2 for levels 1, 2, 3
+    return {
+      paddleTransfer: SPIN_PADDLE_TRANSFER_LEVEL[i],
+      magnusFactor: SPIN_MAGNUS_FACTOR_LEVEL[i],
+      dampingPerTick: SPIN_DAMPING_PER_TICK,
+      wallRetention: SPIN_WALL_RETENTION_LEVEL[i],
+      maxSpin: SPIN_MAX,
+      speedFactor
+    };
+  }
+
+  /**
    * Update paddle position based on controller input
    */
   updatePaddle(paddle, controller) {
+    paddle._prevY = paddle.y;
     // AI controllers directly modify paddle.y in their update() method
     // Human controllers return direction ('up'/'down'/'null')
     if (controller instanceof AIController) {
@@ -1382,6 +1420,8 @@ class Pong {
     if (paddle.y + paddle.height > this.height - 1) {
       paddle.y = this.height - 1 - paddle.height; // Account for bottom wall
     }
+    paddle.vy = paddle.y - paddle._prevY;
+    paddle._prevY = paddle.y;
   }
   
   /**
@@ -1407,15 +1447,20 @@ class Pong {
         // Store current speed multiplier for AI skill scaling
         this.currentSpeedMultiplier = speedMultiplier;
         
-        // Reverse x velocity and apply speed multiplier
-        this.ball.vx = -this.ball.vx * speedMultiplier;
+        // Spin from paddle vertical velocity (before vx/vy rewrite)
+        const cfg = this.getSpinConfig();
+        const deltaSpin = cfg.paddleTransfer * paddle.vy;
+        this.ball.spin = Math.max(-cfg.maxSpin, Math.min(cfg.maxSpin, this.ball.spin + deltaSpin));
+        
+        // Reverse x velocity and apply speed multiplier and level speed factor (level 3: +10%)
+        this.ball.vx = -this.ball.vx * speedMultiplier * cfg.speedFactor;
         
         // Adjust y velocity based on hit position, maintaining speed multiplier
         // Hit near top = upward angle, hit near bottom = downward angle
         const angle = (hitPos - 0.5) * 2; // -1 to 1
         // Maintain proportional speed increase
         const baseVyMagnitude = Math.abs(angle * this.BALL_SPEED * 0.8);
-        this.ball.vy = (angle >= 0 ? 1 : -1) * baseVyMagnitude * speedMultiplier;
+        this.ball.vy = (angle >= 0 ? 1 : -1) * baseVyMagnitude * speedMultiplier * cfg.speedFactor;
         
         // Ensure minimum speed
         if (Math.abs(this.ball.vx) < 0.5) {
@@ -1432,25 +1477,29 @@ class Pong {
    * Update ball position and check collisions
    */
   updateBall() {
-    // Update position
+    const cfg = this.getSpinConfig();
+    // 1. Magnus (flight): spin deflects vy
+    this.ball.vy += this.ball.spin * cfg.magnusFactor;
+    // 2. Damping (flight)
+    this.ball.spin *= cfg.dampingPerTick;
+    // 3. Move
     this.ball.x += this.ball.vx;
     this.ball.y += this.ball.vy;
-    
-    // Check wall collisions (top and bottom)
+    // 4. Walls (top/bottom): flip vy, reduce spin
     if (this.ball.y <= 1) {
       this.ball.y = 1;
       this.ball.vy = -this.ball.vy;
+      this.ball.spin *= cfg.wallRetention;
     }
     if (this.ball.y >= this.height - 2) {
       this.ball.y = this.height - 2;
       this.ball.vy = -this.ball.vy;
+      this.ball.spin *= cfg.wallRetention;
     }
-    
-    // Check paddle collisions
+    // 5. Paddle collisions
     this.checkPaddleCollision(this.leftPaddle);
     this.checkPaddleCollision(this.rightPaddle);
-    
-    // Check goals
+    // 6. Goals
     if (this.ball.x < 0) {
       // Right player scores
       this.score.right++;
@@ -1474,14 +1523,15 @@ class Pong {
   resetBall() {
     this.ball.x = Math.floor(this.width / 2);
     this.ball.y = Math.floor(this.height / 2);
+    this.ball.spin = 0;
     
     // Reset volley count and speed multiplier when ball is reset
     this.volleyCount = 0;
     this.currentSpeedMultiplier = 1.0;
     
-    // Randomize speed: ±5% from base BALL_SPEED
+    // Randomize speed: ±5% from base BALL_SPEED. Level 3: +10%.
     const speedVariation = 1.0 + (Math.random() - 0.5) * 0.1; // ±5%
-    const baseSpeed = this.BALL_SPEED * speedVariation;
+    const baseSpeed = this.BALL_SPEED * speedVariation * this.getSpinConfig().speedFactor;
     
     // Randomize direction: ±10 degrees from base angle
     // Base angle is approximately 45 degrees (when vy = 0.7 * vx)

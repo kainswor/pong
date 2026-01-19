@@ -396,10 +396,38 @@ describe('Pong', () => {
       game.ball.y = game.leftPaddle.y + game.leftPaddle.height / 2;
       game.ball.vx = -2;
       game.ball.vy = 0;
+      game.ball.spin = 0;
+      game.leftPaddle.vy = 0;
       const out = game.checkPaddleCollision(game.leftPaddle);
       expect(out).toBe(true);
       expect(game.ball.vx).toBeGreaterThan(0); // reversed
       expect(Math.abs(game.ball.vy)).toBeLessThanOrEqual(1.0 * 0.8 * 2); // |angle|<=1, BALL_SPEED*0.8 * speedMultiplier
+      expect(game.ball.spin).toBe(0); // no paddle vy => no spin change
+    });
+
+    it('adds topspin when paddle.vy > 0 at collision', () => {
+      const game = createPongForTest();
+      game.ball.x = game.leftPaddle.x + 1;
+      game.ball.y = game.leftPaddle.y + game.leftPaddle.height / 2;
+      game.ball.vx = -2;
+      game.ball.vy = 0;
+      game.ball.spin = 0;
+      game.leftPaddle.vy = 1; // moving down
+      game.checkPaddleCollision(game.leftPaddle);
+      expect(game.ball.spin).toBeGreaterThan(0);
+      expect(game.ball.spin).toBeLessThanOrEqual(game.getSpinConfig().maxSpin);
+    });
+
+    it('adds backspin (reduces spin) when paddle.vy < 0 and ball had topspin', () => {
+      const game = createPongForTest();
+      game.ball.x = game.leftPaddle.x + 1;
+      game.ball.y = game.leftPaddle.y + game.leftPaddle.height / 2;
+      game.ball.vx = -2;
+      game.ball.vy = 0;
+      game.ball.spin = 0.5;
+      game.leftPaddle.vy = -1; // moving up
+      game.checkPaddleCollision(game.leftPaddle);
+      expect(game.ball.spin).toBeLessThan(0.5);
     });
 
     it('returns false when ball is outside paddle y range', () => {
@@ -433,6 +461,56 @@ describe('Pong', () => {
       expect(game.ball.y).toBe(Math.floor(game.height / 2));
       expect(game.ball.vx).not.toBe(0);
       expect(game.ball.vy).not.toBe(0);
+    });
+
+    it('sets ball.spin to 0', () => {
+      const game = createPongForTest();
+      game.ball.spin = 0.5;
+      game.resetBall();
+      expect(game.ball.spin).toBe(0);
+    });
+  });
+
+  describe('spin: wall retention', () => {
+    it('reduces ball.spin by wallRetention when ball hits top wall', () => {
+      const game = createPongForTest();
+      game.gameState = 'PLAYING';
+      game.ball.x = 80;
+      game.ball.y = 1;
+      game.ball.vx = 0;
+      game.ball.vy = -1;
+      game.ball.spin = 1;
+      const cfg = game.getSpinConfig();
+      game.updateBall();
+      expect(game.ball.spin).toBeCloseTo(1 * cfg.dampingPerTick * cfg.wallRetention, 5);
+      expect(game.ball.vy).toBeGreaterThan(0); // flipped
+    });
+  });
+
+  describe('spin: Magnus and damping', () => {
+    it('increases vy and decreases spin over ticks when spin > 0 and no collision', () => {
+      const game = createPongForTest();
+      game.gameState = 'PLAYING';
+      game.ball.x = 80;
+      game.ball.y = 60;
+      game.ball.vx = 1;
+      game.ball.vy = 0;
+      game.ball.spin = 1;
+      for (let i = 0; i < 5; i++) game.updateBall();
+      expect(game.ball.vy).toBeGreaterThan(0);
+      expect(game.ball.spin).toBeLessThan(1);
+      expect(game.ball.spin).toBeGreaterThan(0);
+    });
+  });
+
+  describe('spin: pause restore', () => {
+    it('restores ball.spin on unpause', () => {
+      const game = createPongForTest();
+      game.gameState = 'PLAYING';
+      game.ball.spin = 0.5;
+      game.pauseGame();
+      game.unpauseGame();
+      expect(game.ball.spin).toBe(0.5);
     });
   });
 });

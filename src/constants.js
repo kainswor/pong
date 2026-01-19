@@ -59,3 +59,16 @@ export const PAUSE_BAR_SPACING = 2;
 // Restart arrow
 export const RESTART_ARROW_RADIUS = 6;
 export const RESTART_ARROW_SPEED = 0.1;
+
+// Spin (by level 1/2/3 and 2P). Level 2 dialed back 20% from original. Level 3 reduced 10%.
+export const SPIN_PADDLE_TRANSFER_LEVEL = [0.10, 0.2, 0.36];        // was 0.40 at level 3
+export const SPIN_PADDLE_TRANSFER_2P = 0.2;                          // was 0.25
+export const SPIN_MAGNUS_FACTOR_LEVEL = [0.012, 0.0224, 0.0405];    // was 0.045 at level 3
+export const SPIN_MAGNUS_FACTOR_2P = 0.0224;                         // was 0.028
+export const SPIN_DAMPING_PER_TICK = 0.997;
+export const SPIN_WALL_RETENTION_LEVEL = [0.6, 0.6, 0.81];          // was 0.9 at level 3
+export const SPIN_WALL_RETENTION_2P = 0.6;                           // was 0.75
+export const SPIN_MAX = 2.0;
+
+// Level 3: ball speed +10%
+export const LEVEL_SPEED_FACTOR_3 = 1.1;
