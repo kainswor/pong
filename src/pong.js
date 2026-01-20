@@ -270,8 +270,7 @@ class Pong {
     // Bouncing PONG title in menu
     this.pongTitleX = Math.floor(this.width / 2);
     this.pongTitleY = Math.floor(this.height / 2);
-    this.pongTitleVx = (Math.random() > 0.5 ? 1 : -1) * 0.5;
-    this.pongTitleVy = (Math.random() > 0.5 ? 1 : -1) * 0.5;
+    this._randomizePongTitleVelocity();
     
     // Initialize game objects
     this.leftPaddle = {
@@ -645,6 +644,18 @@ class Pong {
   }
   
   /**
+   * Set PONG title velocity to a random diagonal ±10°. Used at init and when returning to menu.
+   */
+  _randomizePongTitleVelocity() {
+    const speed = 0.5;
+    const baseAngle = (Math.floor(Math.random() * 4) * 2 + 1) * (Math.PI / 4); // 45°, 135°, 225°, 315°
+    const perturb = (Math.random() - 0.5) * 2 * (10 * Math.PI / 180);          // ±10°
+    const a = baseAngle + perturb;
+    this.pongTitleVx = speed * Math.cos(a);
+    this.pongTitleVy = speed * Math.sin(a);
+  }
+
+  /**
    * Draw bouncing PONG title
    */
   drawBouncingPongTitle() {
@@ -652,27 +663,34 @@ class Pong {
     this.pongTitleX += this.pongTitleVx;
     this.pongTitleY += this.pongTitleVy;
     
-    // Bounce off walls
-    const titleWidth = 28; // Approximate width of "PONG" at scale 2
-    const titleHeight = 14; // Approximate height at scale 2
+    // Bounce off edges so "PONG" (4 letters × 7 cols × scale 2 = 56 wide, 9 rows × 2 = 18 tall) stays fully on-screen [0,width-1]×[0,height-1]
+    const titleWidth = 56;
+    const titleHeight = 18;
+    const minX = titleWidth / 2;              // 28: left edge at 0 when center=28
+    const maxX = this.width - titleWidth / 2; // right edge at width-1 when center=width-28
+    const minY = titleHeight / 2;             // 9: top edge at 0 when center=9
+    const maxY = this.height - titleHeight / 2; // bottom edge at height-1 when center=height-9
     
-    if (this.pongTitleX < titleWidth / 2) {
-      this.pongTitleX = titleWidth / 2;
+    if (this.pongTitleX < minX) {
+      this.pongTitleX = minX;
       this.pongTitleVx = -this.pongTitleVx;
-    } else if (this.pongTitleX > this.width - titleWidth / 2) {
-      this.pongTitleX = this.width - titleWidth / 2;
+      this.pongTitleVy *= 0.99 + Math.random() * 0.02; // slight random on tangent
+    } else if (this.pongTitleX > maxX) {
+      this.pongTitleX = maxX;
       this.pongTitleVx = -this.pongTitleVx;
+      this.pongTitleVy *= 0.99 + Math.random() * 0.02;
+    }
+    if (this.pongTitleY < minY) {
+      this.pongTitleY = minY;
+      this.pongTitleVy = -this.pongTitleVy;
+      this.pongTitleVx *= 0.99 + Math.random() * 0.02;
+    } else if (this.pongTitleY > maxY) {
+      this.pongTitleY = maxY;
+      this.pongTitleVy = -this.pongTitleVy;
+      this.pongTitleVx *= 0.99 + Math.random() * 0.02;
     }
     
-    if (this.pongTitleY < titleHeight / 2 + 1) { // +1 for top wall
-      this.pongTitleY = titleHeight / 2 + 1;
-      this.pongTitleVy = -this.pongTitleVy;
-    } else if (this.pongTitleY > this.height - titleHeight / 2 - 1) { // -1 for bottom wall
-      this.pongTitleY = this.height - titleHeight / 2 - 1;
-      this.pongTitleVy = -this.pongTitleVy;
-    }
-    
-    // Draw "PONG" text at position (large scale). drawPattern has no court preserve; PONG stays in center and rarely hits walls.
+    // Draw "PONG" text at position (large scale)
     const letters = ['P', 'O', 'N', 'G'];
     const charWidth = 7;
     const scale = 2;
@@ -1037,8 +1055,7 @@ class Pong {
     // Reset PONG title position and velocity
     this.pongTitleX = Math.floor(this.width / 2);
     this.pongTitleY = Math.floor(this.height / 2);
-    this.pongTitleVx = (Math.random() > 0.5 ? 1 : -1) * 0.5;
-    this.pongTitleVy = (Math.random() > 0.5 ? 1 : -1) * 0.5;
+    this._randomizePongTitleVelocity();
   }
   
   /**
